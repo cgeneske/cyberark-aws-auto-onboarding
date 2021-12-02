@@ -1,0 +1,109 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "ElasticitySNSTopicSubscription": {
+      "Type": "AWS::SNS::Subscription",
+      "Condition": "DoesNotMatchSolutionAccount",
+      "Properties": {
+        "Endpoint": {
+          "Fn::ImportValue": "CyberArk-AOB-ElasticityLambdaArn"
+        },
+        "Protocol": "lambda",
+        "Region": {
+          "Ref": "TargetAWSRegion"
+        },
+        "TopicArn": {
+          "Fn::Join": [
+            "", [
+              "arn:aws:sns:",
+              {
+                "Ref": "TargetAWSRegion"
+              },
+              ":",
+              {
+                "Ref": "TargetAWSAccountID"
+              },
+              ":CyberArkAOBTopic"
+            ]
+          ]
+        }
+      }
+    },
+    "ElasticityLambdaToSNSPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::ImportValue": "CyberArk-AOB-ElasticityLambdaArn"
+        },
+        "Principal": "sns.amazonaws.com",
+        "SourceArn": {
+          "Fn::Join": [
+            "",
+            [
+              "arn:aws:sns:",
+              {
+                "Ref": "TargetAWSRegion"
+              },
+              ":",
+              {
+                "Ref": "TargetAWSAccountID"
+              },
+              ":CyberArkAOBTopic"
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "Description": "",
+  "Parameters": {
+    "TargetAWSAccountID": {
+    "Type": "String",
+    "Description": "Target AWS Account ID that contains the CyberArkAOB SNS Topic to subscribe to."
+    },
+    "TargetAWSRegion": {
+    "Type": "String",
+    "Description": "Target AWS Region that contains the CyberArkAOB SNS Topic to subscribe to."
+    }
+  },
+  "Conditions": {
+    "DoesNotMatchSolutionAccount": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "TargetAWSAccountID"
+            },
+            {
+              "Ref": "AWS::AccountId"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "Metadata": {
+    "AWS::CloudFormation::Interface": {
+    "ParameterGroups": [
+      {
+        "Label": {
+          "default": "General Parameters"
+        },
+        "Parameters": [
+          "TargetAWSAccountID",
+          "TargetAWSRegion"
+        ]
+      }
+    ],
+      "ParameterLabels": {
+        "TargetAWSAccountID": {
+          "default": "Target AWS Account ID:"
+        },
+        "TargetAWSRegion": {
+          "default": "Target AWS Region:"
+        }
+      }
+    }
+  }
+}

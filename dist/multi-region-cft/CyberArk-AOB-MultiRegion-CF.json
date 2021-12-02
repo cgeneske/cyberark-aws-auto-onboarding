@@ -73,6 +73,13 @@
                 "logs:PutLogEvents"
               ],
               "Resource": "arn:aws:logs:*:*:*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "sts:AssumeRole"
+              ],
+              "Resource": "arn:aws:iam::*:role/CyberArk-AOB-AssumeRoleForElasticityLambda"
             }
           ]
         }
@@ -355,6 +362,7 @@
           },
           "S3Key": "aws_ec2_auto_onboarding.zip"
         },
+        "FunctionName": "CyberArk-AOB-MultiRegion-CF-ElasticityLambda",
         "Description": "Main Auto Onboarding Lambda.",
         "Handler": "aws_ec2_auto_onboarding.lambda_handler",
         "Role": {
@@ -379,456 +387,6 @@
             {
               "Ref": "ComponentsSubnet"
             }
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionUE2": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:us-east-2:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionUE1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:us-east-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionUW1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:us-west-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionUW2": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:us-west-2:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionAE1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:ap-east-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionAS1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:ap-south-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionAN1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:ap-northeast-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionAN2": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:ap-northeast-2:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionAN3": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:ap-northeast-3:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionASE1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:ap-southeast-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionASE2": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:ap-southeast-2:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionCC1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:ca-central-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionEW1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:eu-west-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionEW2": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:eu-west-2:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionEW3": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:eu-west-3:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionEN1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:eu-north-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionEC1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:eu-central-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
-          ]
-        }
-      }
-    },
-    "ElasticityLambdaToSNSPermissionSE1": {
-      "Type": "AWS::Lambda::Permission",
-      "Properties": {
-        "Action": "lambda:InvokeFunction",
-        "FunctionName": {
-          "Fn::GetAtt": [
-            "ElasticityLambda",
-            "Arn"
-          ]
-        },
-        "Principal": "sns.amazonaws.com",
-        "SourceArn": {
-          "Fn::Join": [
-            "",
-            [
-              "arn:aws:sns:sa-east-1:",
-              {
-                "Ref": "AWS::AccountId"
-              },
-              ":CyberArkAOBTopic"
-            ]
           ]
         }
       }
@@ -994,6 +552,64 @@
         },
         "TableName": "Instances"
       }
+    },
+    "SubscriptionServiceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "CyberArk-AOB-SubscribeServiceRole",
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "cloudformation.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "SubscriptionServiceRolePolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "SubscribeToSNSTopic",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "sns:Subscribe",
+                "sns:Unsubscribe"
+              ],
+              "Resource": "arn:aws:sns:*:*:CyberArkAOBTopic"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "lambda:AddPermission",
+                "lambda:RemovePermission"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "ElasticityLambda",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        },
+        "Roles": [
+          {
+            "Ref": "SubscriptionServiceRole"
+          }
+        ]
+      }
     }
   },
   "Description": "",
@@ -1062,6 +678,9 @@
           "ElasticityLambda",
           "Arn"
         ]
+      },
+      "Export": {
+        "Name": "CyberArk-AOB-ElasticityLambdaArn"
       }
     }
   }
