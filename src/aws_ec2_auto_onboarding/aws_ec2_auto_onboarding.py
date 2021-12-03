@@ -96,7 +96,7 @@ def elasticity_function(instance_id, action_type, event_account_id, event_region
         disconnect = False
         if action_type == 'terminated':
             logger.info(f'Detected termination of {instance_id}')
-            instance_processing.delete_instance(instance_id, session_token, store_parameters_class, instance_data,
+            instance_processing.delete_instance(instance_id, event_account_id, session_token, store_parameters_class, instance_data,
                                                 instance_details)
         elif action_type == 'running':
             # get key pair

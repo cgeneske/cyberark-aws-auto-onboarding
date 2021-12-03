@@ -151,3 +151,29 @@ def filter_get_accounts_result(parsed_json_response, instance_id):
         if instance_id in element['name']:
             return element['id']
     return False
+
+
+def check_if_safe_exists(session, safe_name, pvwa_url):
+    logger.trace(session, safe_name, pvwa_url, caller_name='check_if_safe_exists')
+    logger.info(f"Checking if {safe_name} exists in the vault")
+    header = DEFAULT_HEADER
+    header.update({"Authorization": session})
+    url = f"{pvwa_url}/WebServices/PIMServices.svc/Safes?query={safe_name}"
+    try:
+        rest_response = pvwa_integration_class.call_rest_api_get(url, header)
+        if not rest_response:
+            raise Exception("Unknown Error when calling rest service - check_if_safe_exists")
+    except Exception as e:
+        logger.error(f'An error occured:\n{str(e)}')
+        raise Exception(e)
+    if rest_response.status_code == requests.codes.ok:
+        if 'SearchSafesResult' in rest_response.json() and rest_response.json()["SearchSafesResult"]:
+            parsed_json_response = rest_response.json()['SearchSafesResult']
+            for element in parsed_json_response:
+                if safe_name in element['SafeName']:
+                    logger.info(f"Found matching safe - {safe_name}")
+                    return True
+        logger.info(f"No matching safe was found for - {safe_name}")
+        return False
+    logger.error(f"Status code {rest_response.status_code}, received from REST service")
+    raise Exception(f"Status code {rest_response.status_code}, received from REST service")

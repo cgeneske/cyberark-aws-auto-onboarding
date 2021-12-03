@@ -73,6 +73,11 @@ def get_ec2_details(instance_id, ec2_object, event_account_id):
     details['platform'] = instance_resource.platform
     details['image_description'] = image_description
     details['aws_account_id'] = event_account_id
+    if instance_resource.tags:
+        for tag in instance_resource.tags:
+            if tag["Key"] == 'CyberArk-Safe':
+                details['safe_name'] = tag["Value"]
+
     return details
 
 
