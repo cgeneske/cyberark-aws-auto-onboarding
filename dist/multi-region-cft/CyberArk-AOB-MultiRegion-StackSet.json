@@ -53,29 +53,6 @@
         ]
       }
     },
-    "SNSSubscriptionToElasticityLambda": {
-      "Type": "AWS::SNS::Subscription",
-      "Condition": "MatchesSolutionAccount",
-      "Properties": {
-        "Endpoint": {
-          "Fn::Sub": [
-            "arn:aws:lambda:${SolutionRegion}:${SolutionAccountId}:function:CyberArk-AOB-MultiRegion-CF-ElasticityLambda",
-            {
-              "SolutionRegion": {
-                "Ref": "SolutionRegion"
-              },
-              "SolutionAccountId": {
-                "Ref": "SolutionAccountId"
-              }
-            }
-          ]
-        },
-        "Protocol": "lambda",
-        "TopicArn": {
-          "Ref": "SNSTopicToElasticityLambda"
-        }
-      }
-    },
     "EventBridgeRuleInstanceChangeTrigger": {
       "Type": "AWS::Events::Rule",
       "Properties": {

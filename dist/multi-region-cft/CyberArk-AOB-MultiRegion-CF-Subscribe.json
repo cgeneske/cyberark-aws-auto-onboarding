@@ -3,7 +3,6 @@
   "Resources": {
     "ElasticitySNSTopicSubscription": {
       "Type": "AWS::SNS::Subscription",
-      "Condition": "DoesNotMatchSolutionAccount",
       "Properties": {
         "Endpoint": {
           "Fn::ImportValue": "CyberArk-AOB-ElasticityLambdaArn"
@@ -67,22 +66,7 @@
     "Description": "Target AWS Region that contains the CyberArkAOB SNS Topic to subscribe to."
     }
   },
-  "Conditions": {
-    "DoesNotMatchSolutionAccount": {
-      "Fn::Not": [
-        {
-          "Fn::Equals": [
-            {
-              "Ref": "TargetAWSAccountID"
-            },
-            {
-              "Ref": "AWS::AccountId"
-            }
-          ]
-        }
-      ]
-    }
-  },
+  "Conditions": {},
   "Metadata": {
     "AWS::CloudFormation::Interface": {
     "ParameterGroups": [
