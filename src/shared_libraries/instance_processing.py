@@ -201,13 +201,13 @@ def determine_best_viable_safe(instance_id, instance_details, event_account_id, 
         if pvwa_api_calls.check_if_safe_exists(session_token, account_safe_name, store_parameters_class.pvwa_url):
             logger.info(f"Using safe name - {account_safe_name} - for on-boarding")
             return account_safe_name
+        logger.info(f"Using safe name - {default_safe_name} - for on-boarding")
+        return default_safe_name
     except Exception as e:
         logger.error(f'An error occured:\n{str(e)}')
-
-    pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
-    aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
-    logger.info(f"Using safe name - {default_safe_name} - for on-boarding")
-    return default_safe_name
+    finally:
+        pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
+        aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
 
 
 class OnBoardStatus:
