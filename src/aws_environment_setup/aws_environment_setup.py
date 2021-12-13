@@ -3,6 +3,7 @@ import time
 import requests
 import urllib3
 import boto3
+import botocore
 import cfnresponse
 from log_mechanism import LogMechanism
 from pvwa_integration import PvwaIntegration
@@ -29,10 +30,15 @@ def lambda_handler(event, context):
             delete_params = delete_password_from_param_store(aob_mode)
             if not delete_params:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        "Failed to delete 'AOB_Vault_Pass' from parameter store, see detailed error in logs", {},
+                                        {'Message': "Failed to delete 'AOB_Vault_Pass' from parameter store, "
+                                                    "see detailed error in logs"},
                                         physical_resource_id)
-            delete_sessions_table()
-            return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, {}, physical_resource_id)
+            is_sessions_table_deleted = delete_sessions_table()
+            if not is_sessions_table_deleted:
+                return cfnresponse.send(event, context, cfnresponse.FAILED,
+                                        {'Message': "Failed to delete the Sessions table from DynamoDB"},
+                                        physical_resource_id)
+            return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, physical_resource_id)
 
         if event['RequestType'] == 'Create':
             logger.info('Create request received')
@@ -56,7 +62,8 @@ def lambda_handler(event, context):
             is_password_saved = add_param_to_parameter_store(request_password, "AOB_Vault_Pass", "Vault Password")
             if not is_password_saved:  # if password failed to be saved
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        "Failed to create Vault user's password in Parameter Store", {}, physical_resource_id)
+                                        {'Message': "Failed to create Vault user's password in Parameter Store"},
+                                        physical_resource_id)
             if request_s3_bucket_name == '' and request_verification_key_name != '':
                 raise Exception('Verification Key cannot be empty if S3 Bucket is provided')
             elif request_s3_bucket_name != '' and request_verification_key_name == '':
@@ -68,80 +75,86 @@ def lambda_handler(event, context):
                                                                  'Production(with SSL) mode')
                 if not is_aob_mode_saved:  # if password failed to be saved
                     return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                            "Failed to create AOB_mode parameter in Parameter Store", {}, physical_resource_id)
+                                            {'Message': "Failed to create AOB_mode parameter in Parameter Store"},
+                                            physical_resource_id)
                 if aob_mode == 'Production':
                     logger.info('Adding verification key to Parameter Store', DEBUG_LEVEL_DEBUG)
                     is_verification_key_saved = save_verification_key_to_param_store(request_s3_bucket_name,
                                                                                      request_verification_key_name)
                     if not is_verification_key_saved:  # if password failed to be saved
                         return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                                "Failed to create PVWA Verification Key in Parameter Store",
-                                                {}, physical_resource_id)
+                                                {'Message': "Failed to create PVWA Verification Key in Parameter Store"},
+                                                physical_resource_id)
 
             pvwa_integration_class = PvwaIntegration(IS_SAFE_HANDLER, aob_mode)
             pvwa_url = f"https://{request_pvwa_ip}/PasswordVault"
             pvwa_session_id = pvwa_integration_class.logon_pvwa(request_username, request_password, pvwa_url, "1")
             if not pvwa_session_id:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        "Failed to connect to PVWA, see detailed error in logs", {}, physical_resource_id)
+                                        {'Message': "Failed to connect to PVWA, see detailed error in logs"},
+                                        physical_resource_id)
 
             is_safe_created = create_safe(pvwa_integration_class, request_unix_safe_name, request_unix_cpm_name, request_pvwa_ip,
                                           pvwa_session_id, 1)
             if not is_safe_created:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        f"Failed to create the Safe {request_unix_safe_name}, see detailed error in logs",
-                                        {}, physical_resource_id)
+                                        {'Message': f"Failed to create the Safe {request_unix_safe_name}, "
+                                                    "see detailed error in logs"},
+                                        physical_resource_id)
 
             is_safe_created = create_safe(pvwa_integration_class, request_windows_safe_name, request_windows_cpm_name,
                                           request_pvwa_ip, pvwa_session_id, 1)
 
             if not is_safe_created:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        f"Failed to create the Safe {request_windows_safe_name}, see detailed error in logs",
-                                        {}, physical_resource_id)
+                                        {'Message': f"Failed to create the Safe {request_windows_safe_name}, "
+                                                    "see detailed error in logs"},
+                                        physical_resource_id)
 
             if not create_session_table():
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        "Failed to create 'Sessions' table in DynamoDB, see detailed error in logs",
-                                        {}, physical_resource_id)
+                                        {'Message': "Failed to create 'Sessions' table in DynamoDB, "
+                                                    "see detailed error in logs"},
+                                        physical_resource_id)
 
             #  Creating KeyPair Safe
             is_safe_created = create_safe(pvwa_integration_class, request_key_pair_safe, "", request_pvwa_ip, pvwa_session_id)
             if not is_safe_created:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        f"Failed to create the Key Pairs safe: {request_key_pair_safe}, " \
-                                        "see detailed error in logs",
-                                        {}, physical_resource_id)
+                                        {'Message': f"Failed to create the Key Pairs safe: {request_key_pair_safe}, "
+                                            "see detailed error in logs"},
+                                        physical_resource_id)
 
             #  key pair is optional parameter
             if not request_key_pair_name:
                 logger.info("Key Pair name parameter is empty, the solution will not create a new Key Pair")
-                return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, {}, physical_resource_id)
+                return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, physical_resource_id)
             aws_key_pair = create_new_key_pair_on_aws(request_key_pair_name)
 
             if aws_key_pair is False:
                 # Account already exist, no need to create it, can't insert it to the vault
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        f"Failed to create Key Pair {request_key_pair_name} in AWS",
-                                        {}, physical_resource_id)
+                                        {'Message': f"Failed to create Key Pair {request_key_pair_name} in AWS"},
+                                        physical_resource_id)
             if aws_key_pair is True:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        f"Key Pair {request_key_pair_name} already exists in AWS",
-                                        {}, physical_resource_id)
+                                        {'Message': f"Key Pair {request_key_pair_name} already exists in AWS"},
+                                        physical_resource_id)
             # Create the key pair account on KeyPairs vault
             is_aws_account_created = create_key_pair_in_vault(pvwa_integration_class, pvwa_session_id, request_key_pair_name,
                                                               aws_key_pair, request_pvwa_ip, request_key_pair_safe,
                                                               request_aws_account_id, request_aws_region_name)
             if not is_aws_account_created:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        f"Failed to create Key Pair {request_key_pair_name} in safe " \
-                                        f"{request_key_pair_safe}. see detailed error in logs", {}, physical_resource_id)
+                                        {'Message': f"Failed to create Key Pair {request_key_pair_name} in safe "
+                                            f"{request_key_pair_safe}. see detailed error in logs"},
+                                        physical_resource_id)
 
-            return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, {}, physical_resource_id)
+            return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, physical_resource_id)
 
     except Exception as e:
         logger.error(f"Exception occurred:{str(e)}:")
-        return cfnresponse.send(event, context, cfnresponse.FAILED, f"Exception occurred: {str(e)}", {})
+        return cfnresponse.send(event, context, cfnresponse.FAILED, {'Message': f"Exception occurred: {str(e)}"})
 
     finally:
         if 'pvwa_session_id' in locals():  # pvwa_session_id has been declared
@@ -328,10 +341,12 @@ def delete_sessions_table():
         dynamodb = boto3.resource('dynamodb')
         sessions_table = dynamodb.Table('Sessions')
         sessions_table.delete()
-        return
-    except Exception:
-        logger.error("Failed to delete 'Sessions' table from DynamoDB")
-        return
+        return True
+    except Exception as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            logger.info("Sessions table does not exist")
+            return True
+        return False
 
 
 def get_aob_mode():
