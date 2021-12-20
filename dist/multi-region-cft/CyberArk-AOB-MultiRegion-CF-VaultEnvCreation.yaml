@@ -30,6 +30,7 @@ Resources:
       Value: !Ref WindowsSafeName
   ParameterUsername:
     Type: 'AWS::SSM::Parameter'
+    Condition: UsingSSMParamStore
     Properties:
       Name: AOB_Vault_User
       Type: String
@@ -41,6 +42,61 @@ Resources:
       Description: Safe where all the AWS key-pairs are stored.
       Type: String
       Value: !Ref KeyPairsSafe
+  ParameterVaultUserSource:
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: "AOB_Vault_User_Source"
+      Description: Source of the Vault User (SSM or Conjur)
+      Type: String
+      Value: !Ref VaultUserSource
+  ParameterConjurHostname:
+    Type: 'AWS::SSM::Parameter'
+    Condition: UsingConjur
+    Properties:
+      Name: AOB_Conjur_Hostname
+      Description: Conjur appliance hostname (IP/FQDN)
+      Type: String
+      Value: !Ref ConjurHostname
+  ParameterConjurAccount:
+    Type: 'AWS::SSM::Parameter'
+    Condition: UsingConjur
+    Properties:
+      Name: AOB_Conjur_Account
+      Description: Account name for the Conjur deployment
+      Type: String
+      Value: !Ref ConjurAccount
+  ParameterConjurAuthnServiceID:
+    Type: 'AWS::SSM::Parameter'
+    Condition: UsingConjur
+    Properties:
+      Name: AOB_Conjur_Authn_Service_ID
+      Description: ServiceID for the configured Conjur IAM authenticaiton webservice
+      Type: String
+      Value: !Ref ConjurAuthnServiceID
+  ParameterConjurAuthnHostNamespace:
+    Type: 'AWS::SSM::Parameter'
+    Condition: UsingConjur
+    Properties:
+      Name: AOB_Conjur_Authn_Host_Namespace
+      Description: Host identity namespace for authentication to Conjur 
+      Type: String
+      Value: !Ref ConjurAuthnHostNamespace
+  ParameterConjurVaultUsernameID:
+    Type: 'AWS::SSM::Parameter'
+    Condition: UsingConjur
+    Properties:
+      Name: AOB_Conjur_Vault_Username_ID
+      Description: Variable Id of the Vault Username secret in Conjur
+      Type: String
+      Value: !Ref ConjurVaultUsernameID
+  ParameterConjurVaultPasswordID:
+    Type: 'AWS::SSM::Parameter'
+    Condition: UsingConjur
+    Properties:
+      Name: AOB_Conjur_Vault_Password_ID
+      Description: Variable Id of the Vault Password secret in Conjur
+      Type: String
+      Value: !Ref ConjurVaultPasswordID
   CreateSafe:
     Type: 'AWS::CloudFormation::CustomResource'
     Version: '1.0'
@@ -60,14 +116,22 @@ Resources:
       PVWAVerificationKeyFileName: !Ref PVWAVerificationKeyFileName
       S3BucketName: !Ref S3BucketWithVerificationKey
       Environment: !Ref Environment
-    DependsOn: [ParameterAWSKeyPairSafe, ParameterUsername, ParameterWindowsAccountsSafe, ParameterUnixAccountsSafe, ParameterDebugLevel, ParameterPVWA]
+      VaultUserSource: !Ref VaultUserSource
+      ConjurHostname: !Ref ConjurHostname
+      ConjurVerificationKeyFileName: !Ref ConjurVerificationKeyFileName
+      ConjurAccount: !Ref ConjurAccount
+      ConjurAuthnServiceID: !Ref ConjurAuthnServiceID
+      ConjurAuthnHostNamespace: !Ref ConjurAuthnHostNamespace
+      ConjurVaultUsernameID: !Ref ConjurVaultUsernameID
+      ConjurVaultPasswordID: !Ref ConjurVaultPasswordID
+    DependsOn: ParameterDebugLevel
 Parameters:
   SafeHandlerLambdaARN:
     Type: String
     Description: ARN of SafeHandlerLambda. An output of first CloudFormation Templates (CyberArk-AOB-MultiRegion-CF).
   S3BucketWithVerificationKey:
     Type: String
-    Description: The s3 bucket where the PVWA public Certificate is stored.
+    Description: The S3 bucket where the PVWA and Conjur (if used) certificate files are stored.
     Default: S3BucketName
   PvwaIP:
     Type: String
@@ -75,7 +139,7 @@ Parameters:
     MinLength: '1'
   PVWAVerificationKeyFileName:
     Type: String
-    Description: Name of the PVWA's CA public certificate stored in S3 (for verification purpose).
+    Description: Name of the PVWA's issuing CA chain file or self-signed certificate file is stored in S3 (for SSL verification).
     Default: VerificationKeyName
   UnixSafeName:
     Type: String
@@ -95,13 +159,11 @@ Parameters:
     MaxLength: '28'
   VaultUser:
     Type: String
-    Description: Vault user that will be used by the solution.
-    MinLength: '1'
+    Description: '[LEAVE BLANK IF USING CONJUR] Vault user that will be used by the solution.'
   VaultPassword:
     Type: String
-    Description: Password of the Vault user.
+    Description: '[LEAVE BLANK IF USING CONJUR] Password of the Vault user.'
     NoEcho: true
-    MinLength: '1'
   CPMNameUnixSafe:
     Type: String
     Description: Name of the CPM manager to manage Unix Accounts Safe.
@@ -139,25 +201,72 @@ Parameters:
       - Info
       - Debug
       - Trace
+  VaultUserSource:
+    Type: String
+    Description: Please select the source for your Vault User information and then complete the relevant parameter group below
+    Default: SSM Parameter Store
+    AllowedValues:
+      - SSM Parameter Store
+      - CyberArk Conjur
+  ConjurVerificationKeyFileName:
+    Type: String
+    Description: Name of Conjur's issuing CA chain file or self-signed certificate file that is stored in S3 (for SSL verification)
+    Default: VerificationKeyName
+  ConjurHostname:
+    Type: String
+    Description: Conjur Follower/Leader IP or FQDN
+  ConjurAccount:
+    Type: String
+    Description: Account name for your Conjur deployment
+  ConjurAuthnServiceID:
+    Type: String
+    Description: Service ID of the Conjur IAM Authenticator webservice
+  ConjurAuthnHostNamespace:
+    Type: String
+    Description: Host identity namespace for authentication to Conjur
+    Default: root
+  ConjurVaultUsernameID:
+    Type: String
+    Description: Varible ID of the Conjur Secret for your Vault Username
+  ConjurVaultPasswordID:
+    Type: String
+    Description: Varible ID of the Conjur Secret for your Vault Password
 Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:
       - Label:
-          default: General parameters
+          default: General Parameters
         Parameters:
           - Environment
           - SafeHandlerLambdaARN
           - PvwaIP
           - S3BucketWithVerificationKey
           - PVWAVerificationKeyFileName
-          - VaultUser
-          - VaultPassword
           - UnixSafeName
           - CPMNameUnixSafe
           - WindowsSafeName
           - CPMNameWindowsSafe
           - KeyPairsSafe
           - EnableDebugLevel
+      - Label:
+          default: 'Vault User Source'
+        Parameters:
+          - VaultUserSource
+      - Label:
+          default: 'Vault User Source - SSM Parameter Store'
+        Parameters:
+          - VaultUser
+          - VaultPassword
+      - Label:
+          default: 'Vault User Source - CyberArk Conjur'
+        Parameters:
+          - ConjurHostname
+          - ConjurVerificationKeyFileName
+          - ConjurAccount
+          - ConjurAuthnServiceID
+          - ConjurAuthnHostNamespace
+          - ConjurVaultUsernameID
+          - ConjurVaultPasswordID
       - Label:
           default: 'Optional: Create new KeyPair for the solution:'
         Parameters:
@@ -168,19 +277,19 @@ Metadata:
       SafeHandlerLambdaARN:
         default: 'ARN of SafeHandlerLambda. An output of first CloudFormation Templates:'
       S3BucketWithVerificationKey:
-        default: 'Verificaion Key Bucket:'
+        default: 'PVWA Verification Key Bucket:'
       PvwaIP:
         default: 'PVWA IP/Host Name:'
       PVWAVerificationKeyFileName:
-        default: 'Verification Key File Name:'
+        default: 'PVWA Verification Key File Name:'
       UnixSafeName:
         default: 'Target Safe for Unix accounts:'
       WindowsSafeName:
         default: 'Target Safe for Windows accounts:'
       VaultUser:
-        default: 'Vault user name:'
+        default: 'Vault Username:'
       VaultPassword:
-        default: 'Vault password:'
+        default: 'Vault Password:'
       CPMNameUnixSafe:
         default: 'CPM name for managing Unix safe:'
       CPMNameWindowsSafe:
@@ -191,6 +300,29 @@ Metadata:
         default: 'Key Pair name:'
       EnableDebugLevel:
         default: 'Error Verbosity Level:'
+      VaultUserSource:
+        default: 'Vault User Source:'
+      ConjurHostname:
+        default: 'Conjur IP/Host Name:'
+      ConjurVerificationKeyFileName:
+        default: 'Conjur Verification Key File Name:'
+      ConjurAccount:
+        default: 'Conjur Account:'
+      ConjurAuthnServiceID:
+        default: 'Conjur IAM Authentication Serivce ID:'
+      ConjurAuthnHostNamespace:
+        default: 'Conjur Host Namespace:'
+      ConjurVaultUsernameID:
+        default: 'Conjur Varible ID for Vault Username:'
+      ConjurVaultPasswordID:
+        default: 'Conjur Variable ID for Vault Password:'
+Conditions:
+  UsingSSMParamStore: !Equals
+    - !Ref VaultUserSource
+    - SSM Parameter Store
+  UsingConjur: !Equals
+    - !Ref VaultUserSource
+    - CyberArk Conjur
 Rules:
   CheckVerificationParameters:
     Assertions:
@@ -199,6 +331,9 @@ Rules:
             - !Equals 
               - !Ref Environment
               - POC
+            - !Equals
+              - !Ref VaultUserSource
+              - SSM Parameter Store
             - !And 
               - !Equals 
                 - S3BucketName
@@ -209,7 +344,27 @@ Rules:
           - !And 
             - !Equals 
               - !Ref Environment
+              - POC
+            - !Equals
+              - !Ref VaultUserSource
+              - CyberArk Conjur
+            - !And 
+              - !Equals 
+                - S3BucketName
+                - !Ref S3BucketWithVerificationKey
+              - !Equals 
+                - VerificationKeyName
+                - !Ref PVWAVerificationKeyFileName
+              - !Equals
+                - VerificationKeyName
+                - !Ref ConjurVerificationKeyFileName
+          - !And 
+            - !Equals 
+              - !Ref Environment
               - Production
+            - !Equals
+              - !Ref VaultUserSource
+              - SSM Parameter Store
             - !And 
               - !Not 
                 - !Equals 
@@ -219,4 +374,24 @@ Rules:
                 - !Equals 
                   - VerificationKeyName
                   - !Ref PVWAVerificationKeyFileName
+          - !And 
+            - !Equals 
+              - !Ref Environment
+              - Production
+            - !Equals
+              - !Ref VaultUserSource
+              - CyberArk Conjur
+            - !And 
+              - !Not 
+                - !Equals 
+                  - S3BucketName
+                  - !Ref S3BucketWithVerificationKey
+              - !Not 
+                - !Equals 
+                  - VerificationKeyName
+                  - !Ref PVWAVerificationKeyFileName
+              - !Not
+                - !Equals
+                  - VerificationKeyName
+                  - !Ref ConjurVerificationKeyFileName
         AssertDescription: Default values are only supported in POC mode
