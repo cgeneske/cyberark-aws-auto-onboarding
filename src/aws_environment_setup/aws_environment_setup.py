@@ -22,14 +22,14 @@ def lambda_handler(event, context):
         physical_resource_id = str(uuid.uuid4())
         if 'PhysicalResourceId' in event:
             physical_resource_id = event['PhysicalResourceId']
-        # only deleting the vault_pass from parameter store
+        # Deleting parameters from parameter store that were created by this Lambda (during custom resource Create)
         if event['RequestType'] == 'Delete':
-            aob_mode = get_aob_mode()
             logger.info('Delete request received')
-            delete_params = delete_password_from_param_store(aob_mode)
+            params_to_del = ["AOB_Vault_Pass", "AOB_mode", "AOB_PVWA_Verification_Key"]
+            delete_params = delete_params_from_param_store(params_to_del)
             if not delete_params:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        "Failed to delete 'AOB_Vault_Pass' from parameter store, see detailed error in logs", {},
+                                        "Failed to delete one or more parameters from parameter store, see detailed error in logs", {},
                                         physical_resource_id)
             delete_sessions_table()
             return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, {}, physical_resource_id)
@@ -295,30 +295,22 @@ def add_param_to_parameter_store(value, parameter_name, parameter_description):
     return True
 
 
-def delete_password_from_param_store(aob_mode):
-    logger.trace(aob_mode, caller_name='delete_password_from_param_store')
-    try:
-        logger.info('Deleting parameters from parameter store')
-        ssm_client = boto3.client('ssm')
-        ssm_client.delete_parameter(
-            Name='AOB_Vault_Pass'
-        )
-        logger.info("Parameter 'AOB_Vault_Pass' deleted successfully from Parameter Store")
-        ssm_client.delete_parameter(
-            Name='AOB_mode'
-        )
-        logger.info("Parameter 'AOB_mode' deleted successfully from Parameter Store")
-        if aob_mode == 'Production':
-            ssm_client.delete_parameter(
-                Name='AOB_PVWA_Verification_Key'
-            )
-            logger.info("Parameter 'AOB_PVWA_Verification_Key' deleted successfully from Parameter Store")
-        return True
-    except Exception as e:
-        if e.response["Error"]["Code"] == "ParameterNotFound":
-            return True
-        logger.error(f'Failed to delete parameter "Vault_Pass" from Parameter Store. Error code: {e.response["Error"]["Code"]}')
-        return False
+def delete_params_from_param_store(params_to_del):
+    logger.trace(params_to_del, caller_name='delete_params_from_param_store')
+    logger.info('Deleting parameters from parameter store')
+    state = True
+    ssm_client = boto3.client('ssm')
+    for param in params_to_del:
+        try:
+            ssm_client.delete_parameter(Name=f'{param}')
+            logger.info(f"Parameter '{param}' deleted successfully from Parameter Store")
+        except Exception as e:
+            if e.response["Error"]["Code"] == "ParameterNotFound":
+                logger.info(f"Parameter '{param}' was not found, skipping")
+            else:
+                logger.error(f'Failed to delete parameter "{param}" from Parameter Store. Error code: {e.response["Error"]["Code"]}')
+                state = False   
+    return state
 
 
 def delete_sessions_table():
@@ -332,12 +324,3 @@ def delete_sessions_table():
     except Exception:
         logger.error("Failed to delete 'Sessions' table from DynamoDB")
         return
-
-
-def get_aob_mode():
-    ssm = boto3.client('ssm')
-    ssm_parameter = ssm.get_parameter(
-        Name='AOB_mode'
-    )
-    aob_mode = ssm_parameter['Parameter']['Value']
-    return aob_mode
