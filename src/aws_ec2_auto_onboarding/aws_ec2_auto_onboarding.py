@@ -1,6 +1,7 @@
 import json
 import urllib3
 from pvwa_integration import PvwaIntegration
+from conjur_integration import ConjurIntegration
 import aws_services
 import instance_processing
 import pvwa_api_calls
@@ -10,6 +11,7 @@ from log_mechanism import LogMechanism
 DEBUG_LEVEL_DEBUG = 'debug' # Outputs all information
 logger = LogMechanism()
 pvwa_integration_class = PvwaIntegration()
+conjur_integration_class = ConjurIntegration()
 
 def lambda_handler(event, context):
     logger.trace(context, caller_name='lambda_handler')
@@ -79,11 +81,44 @@ def elasticity_function(instance_id, action_type, event_account_id, event_region
         if not store_parameters_class:
             return
         if store_parameters_class.aob_mode == 'Production':
-            # Save PVWA Verification key in /tmp folder
-            logger.info('Saving verification key')
-            crt = open("/tmp/server.crt", "w+")
+            # Save PVWA Verification Key in /tmp folder
+            logger.info('Saving PVWA verification key')
+            crt = open("/tmp/pvwa_server.crt", "w+")
             crt.write(store_parameters_class.pvwa_verification_key)
             crt.close()
+            if store_parameters_class.vault_user_source == 'CyberArk Conjur':
+                # If using Conjur, save Conjur Verification Key in /tmp folder
+                logger.info('Saving Conjur verification key')
+                crt = open("/tmp/conjur_server.crt", "w+")
+                crt.write(store_parameters_class.conjur_verification_key)
+                crt.close()
+
+        # Check for vault user source and set variables for logon
+        if store_parameters_class.vault_user_source == 'CyberArk Conjur':
+            # Using Conjur
+            if store_parameters_class.conjur_authn_host_namespace == 'root':
+                conjur_username = f'host/{solution_account_id}/CyberArk-AOB-ElasticityLambdaRole'
+            else:
+                conjur_username = f'host/{store_parameters_class.conjur_authn_host_namespace}/'\
+                                f'{solution_account_id}/CyberArk-AOB-ElasticityLambdaRole'
+            try:
+                conjur_token = conjur_integration_class.logon_conjur(store_parameters_class.conjur_hostname,
+                                                                     store_parameters_class.conjur_account,
+                                                                     store_parameters_class.conjur_authn_service_id,
+                                                                     conjur_username)
+                vault_un = conjur_integration_class.get(conjur_token, store_parameters_class.conjur_vault_username_id)
+                if not vault_un:
+                    raise Exception("The Conjur variable for vault username is empty")
+                store_parameters_class.vault_username = vault_un
+
+                vault_pw = conjur_integration_class.get(conjur_token, store_parameters_class.conjur_vault_password_id)
+                if not vault_pw:
+                    raise Exception("The Conjur Variable for vault user password is empty")
+                store_parameters_class.vault_password = vault_pw
+            except Exception as e:
+                logger.error(f'Unable to retrieve Vault User details from Conjur:\n{str(e)}')
+                return
+
         pvwa_connection_number, session_guid = aws_services.get_session_from_dynamo()
         if not pvwa_connection_number:
             return

@@ -22,7 +22,7 @@ class PvwaIntegration:
                 environment = self.safe_handler_environment
             if environment == 'Production':
                 self.logger.info(f'{environment} Environment Detected', DEBUG_LEVEL_DEBUG)
-                self.certificate = "/tmp/server.crt"
+                self.certificate = "/tmp/pvwa_server.crt"
             else:
                 self.certificate = False
                 self.logger.info(f'{environment} Environment Detected', DEBUG_LEVEL_DEBUG)
