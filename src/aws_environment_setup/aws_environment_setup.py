@@ -29,8 +29,8 @@ def lambda_handler(event, context):
             delete_params = delete_params_from_param_store(params_to_del)
             if not delete_params:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
-                                        {'Data': "Failed to delete one or more parameters from parameter store, "
-                                                 "see detailed error in logs"},
+                                        {'Message': "Failed to delete one or more parameters from parameter store, "
+                                            "see detailed error in logs"},
                                         physical_resource_id)
             delete_sessions_table()
             return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, {}, physical_resource_id)
