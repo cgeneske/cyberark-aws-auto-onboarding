@@ -264,6 +264,7 @@
     "SafeHandlerLambdaRole": {
       "Type": "AWS::IAM::Role",
       "Properties": {
+        "RoleName": "CyberArk-AOB-SafeHandlerLambdaRole",
         "AssumeRolePolicyDocument": {
           "Statement": [
             {

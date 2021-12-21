@@ -114,12 +114,21 @@ def get_params_from_param_store():
     PVWA_VERIFICATION_KEY = "AOB_PVWA_Verification_Key"
     AOB_MODE = "AOB_mode"
     AOB_DEBUG_LEVEL = "AOB_Debug_Level"
+    VAULT_USER_SOURCE_PARAM = "AOB_Vault_User_Source"
+    CONJUR_VERIFICATION_KEY = "AOB_Conjur_Verification_Key"
+    CONJUR_HOSTNAME_PARAM = "AOB_Conjur_Hostname"
+    CONJUR_ACCOUNT_PARAM = "AOB_Conjur_Account"
+    CONJUR_AUTHN_SERVICE_ID_PARAM = "AOB_Conjur_Authn_Service_ID"
+    CONJUR_AUTHN_HOST_NAMESPACE_PARAM = "AOB_Conjur_Authn_Host_Namespace"
+    CONJUR_VAULT_USERNAME_ID_PARAM = "AOB_Conjur_Vault_Username_ID"
+    CONJUR_VAULT_PASSWORD_ID_PARAM = "AOB_Conjur_Vault_Password_ID"
 
     lambda_client = boto3.client('lambda')
     lambda_request_data = dict()
     lambda_request_data["Parameters"] = [UNIX_SAFE_NAME_PARAM, WINDOWS_SAFE_NAME_PARAM, VAULT_USER_PARAM, PVWA_IP_PARAM,
                                          AWS_KEYPAIR_SAFE, VAULT_PASSWORD_PARAM_, PVWA_VERIFICATION_KEY, AOB_MODE,
-                                         AOB_DEBUG_LEVEL]
+                                         AOB_DEBUG_LEVEL, VAULT_USER_SOURCE_PARAM]
+
     try:
         response = lambda_client.invoke(FunctionName='TrustMechanism',
                                         InvocationType='RequestResponse',
@@ -128,6 +137,7 @@ def get_params_from_param_store():
         logger.error(f"Error retrieving parameters from parameter parameter store:\n{str(e)}")
         raise Exception(f"Error retrieving parameters from parameter parameter store: {str(e)}")
 
+    should_retrieve_conjur_params = False
     json_parsed_response = json.load(response['Payload'])
     # parsing the parameters, json_parsed_response is a list of dictionaries
     for ssm_store_item in json_parsed_response:
@@ -145,16 +155,65 @@ def get_params_from_param_store():
             vault_password = ssm_store_item['Value']
         elif ssm_store_item['Name'] == PVWA_VERIFICATION_KEY:
             pvwa_verification_key = ssm_store_item['Value']
+        elif ssm_store_item['Name'] == VAULT_USER_SOURCE_PARAM:
+            vault_user_source = ssm_store_item['Value']
+            if vault_user_source == 'CyberArk Conjur':
+                vault_username = ''
+                vault_password = ''
+                should_retrieve_conjur_params = True
         elif ssm_store_item['Name'] == AOB_DEBUG_LEVEL:
             debug_level = ssm_store_item['Value']
         elif ssm_store_item['Name'] == AOB_MODE:
             aob_mode = ssm_store_item['Value']
             if aob_mode == 'POC':
                 pvwa_verification_key = ''
+                conjur_verification_key = ''
         else:
             continue
+    
+    if not should_retrieve_conjur_params:
+        store_parameters_class = StoreParameters(unix_safe_name, windows_safe_name, vault_username, vault_password,
+                                                 pvwa_ip, key_pair_safe_name, pvwa_verification_key, aob_mode,
+                                                 debug_level, vault_user_source)
+        return store_parameters_class
+
+    lambda_request_data_conjur = dict()
+    lambda_request_data_conjur["Parameters"] = [CONJUR_VERIFICATION_KEY, CONJUR_HOSTNAME_PARAM, CONJUR_ACCOUNT_PARAM,
+                                                CONJUR_AUTHN_SERVICE_ID_PARAM, CONJUR_AUTHN_HOST_NAMESPACE_PARAM,
+                                                CONJUR_VAULT_USERNAME_ID_PARAM, CONJUR_VAULT_PASSWORD_ID_PARAM]
+
+    try:
+        response_conjur = lambda_client.invoke(FunctionName='TrustMechanism',
+                                               InvocationType='RequestResponse',
+                                               Payload=json.dumps(lambda_request_data_conjur))
+    except Exception as e:
+        logger.error(f"Error retrieving parameters from parameter parameter store:\n{str(e)}")
+        raise Exception(f"Error retrieving parameters from parameter parameter store: {str(e)}")
+
+    json_parsed_response_conjur = json.load(response_conjur['Payload'])
+    # parsing the parameters, json_parsed_response is a list of dictionaries
+    for ssm_store_item in json_parsed_response_conjur:
+        if ssm_store_item['Name'] == CONJUR_VERIFICATION_KEY:
+            conjur_verification_key = ssm_store_item['Value']
+        elif ssm_store_item['Name'] == CONJUR_HOSTNAME_PARAM:
+            conjur_hostname = ssm_store_item['Value']
+        elif ssm_store_item['Name'] == CONJUR_ACCOUNT_PARAM:
+            conjur_account = ssm_store_item['Value']
+        elif ssm_store_item['Name'] == CONJUR_AUTHN_SERVICE_ID_PARAM:
+            conjur_authn_service_id = ssm_store_item['Value']
+        elif ssm_store_item['Name'] == CONJUR_AUTHN_HOST_NAMESPACE_PARAM:
+            conjur_authn_host_namespace = ssm_store_item['Value']
+        elif ssm_store_item['Name'] == CONJUR_VAULT_USERNAME_ID_PARAM:
+            conjur_vault_username_id = ssm_store_item['Value']
+        elif ssm_store_item['Name'] == CONJUR_VAULT_PASSWORD_ID_PARAM:
+            conjur_vault_password_id = ssm_store_item['Value']
+        else:
+            continue
+
     store_parameters_class = StoreParameters(unix_safe_name, windows_safe_name, vault_username, vault_password, pvwa_ip,
-                                             key_pair_safe_name, pvwa_verification_key, aob_mode, debug_level)
+                                             key_pair_safe_name, pvwa_verification_key, aob_mode, debug_level, vault_user_source,
+                                             conjur_verification_key, conjur_hostname, conjur_account, conjur_authn_service_id,
+                                             conjur_authn_host_namespace, conjur_vault_username_id, conjur_vault_password_id)
     return store_parameters_class
 
 
@@ -279,10 +338,19 @@ class StoreParameters:
     key_pair_safe_name = ""
     pvwa_verification_key = ""
     aob_mode = ""
+    vault_user_source = ""
+    conjur_verification_key = ""
+    conjur_hostname = ""
+    conjur_account = ""
+    conjur_authn_service_id = ""
+    conjur_authn_host_namespace = ""
+    conjur_vault_username_id = ""
+    conjur_vault_password_id = ""
 
 
     def __init__(self, unix_safe_name, windows_safe_name, username, password, ip, key_pair_safe, pvwa_verification_key, mode,
-                 debug):
+                 debug, vault_user_source, conjur_verification_key='', conjur_hostname='', conjur_account='', conjur_authn_service_id='',
+                 conjur_authn_host_namespace='', conjur_vault_username_id='', conjur_vault_password_id=''):
         self.unix_safe_name = unix_safe_name
         self.windows_safe_name = windows_safe_name
         self.vault_username = username
@@ -292,3 +360,11 @@ class StoreParameters:
         self.pvwa_verification_key = pvwa_verification_key
         self.aob_mode = mode
         self.debug_level = debug
+        self.vault_user_source = vault_user_source
+        self.conjur_verification_key = conjur_verification_key
+        self.conjur_hostname = conjur_hostname
+        self.conjur_account = conjur_account
+        self.conjur_authn_service_id = conjur_authn_service_id
+        self.conjur_authn_host_namespace = conjur_authn_host_namespace
+        self.conjur_vault_username_id = conjur_vault_username_id
+        self.conjur_vault_password_id = conjur_vault_password_id
