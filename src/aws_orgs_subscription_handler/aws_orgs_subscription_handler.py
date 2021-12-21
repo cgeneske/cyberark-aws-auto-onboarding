@@ -43,7 +43,7 @@ def lambda_handler(event, context):
         if event['RequestType'] == 'Delete':
             print('[INFO] Delete request received')
             cfn_client = boto3.client('cloudformation', region_name=solution_region)
-            print(f'[INFO] Confirming stack {stack_name} exists')
+            print(f'[INFO] Confirming stack {stack_name} exists and obtaining its ID')
             stack_exists = False
             stacks = cfn_client.list_stacks()['StackSummaries']
             for stack in stacks:
