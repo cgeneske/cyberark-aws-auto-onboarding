@@ -13,15 +13,18 @@ pvwa_integration_class = PvwaIntegration()
 logger = LogMechanism()
 
 
-def delete_instance(instance_id, session, store_parameters_class, instance_data, instance_details):
-    logger.trace(instance_id, session, store_parameters_class, instance_data, instance_details, caller_name='delete_instance')
+def delete_instance(instance_id, event_account_id, session, store_parameters_class, instance_data, instance_details):
+    logger.trace(instance_id, event_account_id, session, store_parameters_class, instance_data, instance_details, 
+                 caller_name='delete_instance')
     logger.info(f'Removing {instance_id} From AOB')
     instance_ip_address = instance_data["Address"]["S"]
     if instance_details['platform'] == "windows":
-        safe_name = store_parameters_class.windows_safe_name
+        safe_name = determine_best_viable_safe(instance_id, instance_details, event_account_id, store_parameters_class, 
+                                               store_parameters_class.windows_safe_name)
         instance_username = ADMINISTRATOR
     else:
-        safe_name = store_parameters_class.unix_safe_name
+        safe_name = determine_best_viable_safe(instance_id, instance_details, event_account_id, store_parameters_class, 
+                                               store_parameters_class.unix_safe_name)
         instance_username = get_os_distribution_user(instance_details['image_description'])
     search_pattern = f"{instance_ip_address},{instance_username}"
 
@@ -54,7 +57,7 @@ def get_instance_password_data(instance_id, solution_account_id, event_region, e
                                                 RoleSessionName="cross_acct_lambda")
             access_key = acct_b['Credentials']['AccessKeyId']
             secret_key = acct_b['Credentials']['SecretAccessKey']
-            session_token = acct_b['Credentials']['session_token']
+            session_token = acct_b['Credentials']['SessionToken']
 
             ec2_resource = boto3.client(
                 'ec2',
@@ -91,7 +94,8 @@ def create_instance(instance_id, instance_details, store_parameters_class, log_n
         instance_key = decrypted_password
         platform = WINDOWS_PLATFORM
         instance_username = ADMINISTRATOR
-        safe_name = store_parameters_class.windows_safe_name
+        safe_name = determine_best_viable_safe(instance_id, instance_details, event_account_id, store_parameters_class, 
+                                               store_parameters_class.windows_safe_name)
     else:
         logger.info('Linux\\Unix platform detected')
         ppk_key = kp_processing.convert_pem_to_ppk(instance_account_password)
@@ -102,7 +106,8 @@ def create_instance(instance_id, instance_details, store_parameters_class, log_n
         instance_key = trimmed_ppk_key.replace("\r", "\\r")
         aws_account_name = f'AWS.{instance_id}.Unix'
         platform = UNIX_PLATFORM
-        safe_name = store_parameters_class.unix_safe_name
+        safe_name = determine_best_viable_safe(instance_id, instance_details, event_account_id, store_parameters_class, 
+                                               store_parameters_class.unix_safe_name)
         instance_username = get_os_distribution_user(instance_details['image_description'])
 
     # Check if account already exist - in case exist - just add it to DynamoDB
@@ -167,6 +172,42 @@ def get_os_distribution_user(image_description):
         linux_username = "ec2-user"
 
     return linux_username
+
+
+def determine_best_viable_safe(instance_id, instance_details, event_account_id, store_parameters_class, default_safe_name):
+    logger.trace(instance_id, instance_details, event_account_id, store_parameters_class, default_safe_name,
+                caller_name='determine_best_viable_safe')
+    logger.info(f"Determining on-boarding safe for {instance_id}")
+
+    print('pvwa_connection_number')
+    pvwa_connection_number, session_guid = aws_services.get_session_from_dynamo()
+    if not pvwa_connection_number:
+        logger.info("Unable to reserve PVWA connection number from DynamoDB sessions table, returning default safe name")
+        return default_safe_name
+    session_token = pvwa_integration_class.logon_pvwa(store_parameters_class.vault_username,
+                                                      store_parameters_class.vault_password,
+                                                      store_parameters_class.pvwa_url, pvwa_connection_number)
+    print('session_token')
+    if not session_token:
+        logger.info(f"Failed to authenticate to PVWA, using safe name - {default_safe_name} - for on-boarding")
+        return default_safe_name
+
+    try:
+        if "safe_name" in instance_details.keys():
+            if pvwa_api_calls.check_if_safe_exists(session_token, instance_details['safe_name'], store_parameters_class.pvwa_url):
+                logger.info(f"Using safe name - {instance_details['safe_name']} - for on-boarding")
+                return instance_details['safe_name']
+        account_safe_name = f"{event_account_id}_{default_safe_name}"
+        if pvwa_api_calls.check_if_safe_exists(session_token, account_safe_name, store_parameters_class.pvwa_url):
+            logger.info(f"Using safe name - {account_safe_name} - for on-boarding")
+            return account_safe_name
+        logger.info(f"Using safe name - {default_safe_name} - for on-boarding")
+        return default_safe_name
+    except Exception as e:
+        logger.error(f'An error occured:\n{str(e)}')
+    finally:
+        pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
+        aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
 
 
 class OnBoardStatus:
