@@ -79,7 +79,7 @@
               "Action": [
                 "sts:AssumeRole"
               ],
-              "Resource": "arn:aws:iam::*:role/CyberArk-AOB-AssumeRoleForElasticityLambda"
+              "Resource": "arn:aws:iam::*:role/CyberArk-AOB-AssumeRoleForElasticityLambda*"
             }
           ]
         }
