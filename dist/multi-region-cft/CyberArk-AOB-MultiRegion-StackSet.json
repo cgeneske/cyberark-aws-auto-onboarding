@@ -29,7 +29,7 @@
                 "AWS": [
                   {
                     "Fn::Sub": [
-                      "arn:aws:iam::${SolutionAccountId}:role/CyberArk-AOB-SubscribeServiceRole",
+                      "arn:aws:iam::${SolutionAccountId}:role/CyberArk-AOB-SubscribeStackRole",
                       {
                         "SolutionAccountId": {
                           "Ref": "SolutionAccountId"
@@ -87,7 +87,16 @@
       "Type": "AWS::IAM::Role",
       "Condition": "ShouldCreateAssumeRole",
       "Properties": {
-        "RoleName": "CyberArk-AOB-AssumeRoleForElasticityLambda",
+        "RoleName": {
+          "Fn::Join": [
+            "", [
+              "CyberArk-AOB-AssumeRoleForElasticityLambda-",
+              {
+                "Ref": "AWS::Region"
+              }
+            ]
+          ]
+        },
         "AssumeRolePolicyDocument": {
           "Statement": [
             {
@@ -154,26 +163,9 @@
     "SolutionRegion": {
       "Type": "String",
       "Description": "The Region where the min solution is deployed"
-    },
-    "FirstStackInAccount": {
-      "Type": "String",
-      "Description": "Is this the first stack deployment in the target account(s)?",
-      "Default": "Yes",
-      "AllowedValues" : [
-        "Yes",
-        "No"
-      ]
     }
   },
   "Conditions": {
-    "IsFirstStackInAccount": {
-      "Fn::Equals": [
-        {
-          "Ref": "FirstStackInAccount"
-        },
-        "Yes"
-      ]
-    },
     "MatchesSolutionAccount": {
       "Fn::Equals": [
         {
@@ -185,16 +177,9 @@
       ]
     },
     "ShouldCreateAssumeRole": {
-      "Fn::And": [
+      "Fn::Not": [
         {
-          "Condition": "IsFirstStackInAccount"
-        },
-        {
-          "Fn::Not": [
-            {
-              "Condition": "MatchesSolutionAccount"
-            }
-          ]
+          "Condition": "MatchesSolutionAccount"
         }
       ]
     }
@@ -208,8 +193,7 @@
         },
         "Parameters": [
           "SolutionAccountId",
-          "SolutionRegion",
-          "FirstStackInAccount"
+          "SolutionRegion"
         ]
       }
     ],
@@ -219,9 +203,6 @@
         },
         "SolutionRegion": {
           "default": "Solution Region"
-        },
-        "FirstStackInAccount": {
-          "default": "First Stack in Target Account(s)?"
         }
       }
     }

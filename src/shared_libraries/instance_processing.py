@@ -50,7 +50,7 @@ def get_instance_password_data(instance_id, solution_account_id, event_region, e
             logger.info('Assuming role')
             sts_connection = boto3.client('sts')
             acct_b = sts_connection.assume_role(RoleArn=f"arn:aws:iam::{event_account_id}" \
-                                                ":role/CyberArk-AOB-AssumeRoleForElasticityLambda",
+                                                f":role/CyberArk-AOB-AssumeRoleForElasticityLambda-{event_region}",
                                                 RoleSessionName="cross_acct_lambda")
             access_key = acct_b['Credentials']['AccessKeyId']
             secret_key = acct_b['Credentials']['SecretAccessKey']

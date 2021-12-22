@@ -345,11 +345,9 @@
               ]
             }
           ],
-          "SubnetIds": [
-            {
-              "Ref": "ComponentsSubnet"
-            }
-          ]
+          "SubnetIds": {
+            "Ref": "ComponentsSubnet"
+          }
         }
       }
     },
@@ -383,11 +381,9 @@
               ]
             }
           ],
-          "SubnetIds": [
-            {
+          "SubnetIds": {
               "Ref": "ComponentsSubnet"
-            }
-          ]
+          }
         }
       }
     },
@@ -419,11 +415,9 @@
               ]
             }
           ],
-          "SubnetIds": [
-            {
-              "Ref": "ComponentsSubnet"
-            }
-          ]
+          "SubnetIds": {
+            "Ref": "ComponentsSubnet"
+          }
         }
       },
       "DependsOn": [
@@ -553,10 +547,10 @@
         "TableName": "Instances"
       }
     },
-    "SubscriptionServiceRole": {
+    "SubscriptionStackRole": {
       "Type": "AWS::IAM::Role",
       "Properties": {
-        "RoleName": "CyberArk-AOB-SubscribeServiceRole",
+        "RoleName": "CyberArk-AOB-SubscribeStackRole",
         "AssumeRolePolicyDocument": {
           "Statement": [
             {
@@ -574,7 +568,7 @@
         }
       }
     },
-    "SubscriptionServiceRolePolicy": {
+    "SubscriptionStackRolePolicy": {
       "Type": "AWS::IAM::Policy",
       "Properties": {
         "PolicyName": "SubscribeToSNSTopic",
@@ -606,7 +600,7 @@
         },
         "Roles": [
           {
-            "Ref": "SubscriptionServiceRole"
+            "Ref": "SubscriptionStackRole"
           }
         ]
       }
@@ -619,8 +613,8 @@
       "Description": "Name of the bucket containing the solution zip files. The bucket must be in the same region as the solution."
     },
     "ComponentsSubnet": {
-      "Type": "AWS::EC2::Subnet::Id",
-      "Description": "Subnet where the solution will be deployed. The subnet must have access to the PVWA."
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Description": "Subnet(s) where the solution will be deployed. The subnet(s) must have access to the PVWA."
     },
     "ComponentsVPC": {
       "Type": "AWS::EC2::VPC::Id",
@@ -628,7 +622,7 @@
     },
     "PVWASG": {
       "Type": "AWS::EC2::SecurityGroup::Id",
-      "Description": "Security Group of the PVWA."
+      "Description": "Security Group(s) of the PVWA."
     }
   },
   "Conditions": {},
@@ -652,13 +646,13 @@
           "default": "Bucket Name:"
         },
         "ComponentsSubnet": {
-          "default": "Solution subnet:"
+          "default": "Solution subnet(s):"
         },
         "ComponentsVPC": {
           "default": "VPC:"
         },
         "PVWASG": {
-          "default": "PVWA Security Group:"
+          "default": "PVWA Security Group(s):"
         }
       }
     }
