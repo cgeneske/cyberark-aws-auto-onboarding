@@ -391,6 +391,7 @@
     "SafeHandlerLambda": {
       "Type": "AWS::Lambda::Function",
       "Properties": {
+        "FunctionName": "CyberArk-AOB-SafeHandlerLambda",
         "Code": {
           "S3Bucket": {
             "Ref": "LambdasBucket"
@@ -665,6 +666,9 @@
           "SafeHandlerLambda",
           "Arn"
         ]
+      },
+      "Export": {
+        "Name": "CyberArk-AOB-SafeHandlerLambdaArn"
       }
     },
     "ElasticityLambdaARN": {
