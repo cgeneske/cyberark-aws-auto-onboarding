@@ -45,7 +45,7 @@ Resources:
     Type: 'AWS::CloudFormation::CustomResource'
     Version: '1.0'
     Properties:
-      ServiceToken: !Ref SafeHandlerLambdaARN
+      ServiceToken: !ImportValue CyberArk-AOB-SafeHandlerLambdaArn
       PVWAIP: !Ref PvwaIP
       UnixSafeName: !Ref UnixSafeName
       WindowsSafeName: !Ref WindowsSafeName
@@ -62,9 +62,6 @@ Resources:
       Environment: !Ref Environment
     DependsOn: [ParameterAWSKeyPairSafe, ParameterUsername, ParameterWindowsAccountsSafe, ParameterUnixAccountsSafe, ParameterDebugLevel, ParameterPVWA]
 Parameters:
-  SafeHandlerLambdaARN:
-    Type: String
-    Description: ARN of SafeHandlerLambda. An output of first CloudFormation Templates (CyberArk-AOB-MultiRegion-CF).
   S3BucketWithVerificationKey:
     Type: String
     Description: The s3 bucket where the PVWA public Certificate is stored.
@@ -146,7 +143,6 @@ Metadata:
           default: General parameters
         Parameters:
           - Environment
-          - SafeHandlerLambdaARN
           - PvwaIP
           - S3BucketWithVerificationKey
           - PVWAVerificationKeyFileName
@@ -165,8 +161,6 @@ Metadata:
     ParameterLabels:
       Environment:
         default: 'Environment Type:'
-      SafeHandlerLambdaARN:
-        default: 'ARN of SafeHandlerLambda. An output of first CloudFormation Templates:'
       S3BucketWithVerificationKey:
         default: 'Verificaion Key Bucket:'
       PvwaIP:
