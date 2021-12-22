@@ -25,7 +25,7 @@ def get_account_details(solution_account_id, event_account_id, event_region):
             logger.info('Assuming Role')
             sts_connection = boto3.client('sts')
             acct_b = sts_connection.assume_role(
-                RoleArn=f"arn:aws:iam::{event_account_id}:role/CyberArk-AOB-AssumeRoleForElasticityLambda",
+                RoleArn=f"arn:aws:iam::{event_account_id}:role/CyberArk-AOB-AssumeRoleForElasticityLambda-{event_region}",
                 RoleSessionName="cross_acct_lambda"
             )
 
