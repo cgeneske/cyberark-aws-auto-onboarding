@@ -166,20 +166,17 @@
     }
   },
   "Conditions": {
-    "MatchesSolutionAccount": {
-      "Fn::Equals": [
-        {
-          "Ref": "SolutionAccountId"
-        },
-        {
-          "Ref": "AWS::AccountId"
-        }
-      ]
-    },
     "ShouldCreateAssumeRole": {
       "Fn::Not": [
         {
-          "Condition": "MatchesSolutionAccount"
+          "Fn::Equals": [
+            {
+              "Ref": "SolutionAccountId"
+            },
+            {
+              "Ref": "AWS::AccountId"
+            }
+          ]
         }
       ]
     }
