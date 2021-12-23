@@ -1,60 +1,9 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
   "Resources": {
-    "SNSTopicToElasticityLambda": {
-      "Type": "AWS::SNS::Topic",
-      "Properties": {
-        "TopicName": "CyberArkAOBTopic"
-      }
-    },
-    "EventTopicPolicy": {
-      "Type": "AWS::SNS::TopicPolicy",
-      "Properties": {
-        "PolicyDocument": {
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "events.amazonaws.com"
-              },
-              "Action": "sns:Publish",
-              "Resource": {
-                "Ref": "SNSTopicToElasticityLambda"
-              }
-            },
-            {
-              "Sid":"Allow-solution-account-to-subscribe-to-topic",
-              "Effect": "Allow",
-              "Principal": {
-                "AWS": [
-                  {
-                    "Fn::Sub": [
-                      "arn:aws:iam::${SolutionAccountId}:role/CyberArk-AOB-SubscribeStackRole",
-                      {
-                        "SolutionAccountId": {
-                          "Ref": "SolutionAccountId"
-                        }
-                      }
-                    ]
-                  }
-                ]
-              },
-              "Action": "sns:Subscribe",
-              "Resource": {
-                "Ref": "SNSTopicToElasticityLambda"
-              }
-            }
-          ]
-        },
-        "Topics": [
-          {
-            "Ref": "SNSTopicToElasticityLambda"
-          }
-        ]
-      }
-    },
     "EventBridgeRuleInstanceChangeTrigger": {
       "Type": "AWS::Events::Rule",
+      "Condition": "ShouldCreateEventBridgeResources",
       "Properties": {
         "Description": "Event Bridge event rule which fires on create/start/termination of an EC2 Instance ",
         "EventPattern": {
@@ -71,14 +20,91 @@
             ]
           }
         },
-        "Name": "Instance_Status_Change_Trigger",
+        "Name": "CyberArk-AOB-EC2_State_Change",
         "State": "ENABLED",
         "Targets": [
           {
             "Arn": {
-              "Ref": "SNSTopicToElasticityLambda"
+              "Ref": {
+                "Fn::Sub": [
+                  "arn:aws:events:{solution_region}:{solution_account}:event-bus/CyberArk-AOB-EventBus",
+                  {
+                    "solution_region": {
+                      "Ref": "SolutionRegion"
+                    }
+                  },
+                  {
+                    "solution_account": {
+                      "Ref": "SolutionAccountId"
+                    }
+                  }
+                ]
+              }
             },
-            "Id": "CloudWatch_Instance_Change_Target"
+            "Id": "CyberArk-AOB-ElasticityEventBus",
+            "RoleArn": {
+              "Fn::GetAtt": [
+                "EventBridgeIAMRole",
+                "Arn"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "EventBridgeIAMRole": {
+      "Type": "AWS::IAM::Role",
+      "Condition": "ShouldCreateEventBridgeResources",
+      "Properties": {
+        "RoleName": {
+          "Fn::Join": [
+            "", [
+              "CyberArk-AOB-CrossEventBusRole-",
+              {
+                "Ref": "AWS::Region"
+              }
+            ]
+          ]
+        },
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "events.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "CyberArk-AOB-CrossEventBusPolicy",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "events:PutEvents",
+                  "Resource": {
+                    "Fn::Sub": [
+                      "arn:aws:events:{solution_region}:{solution_account}:event-bus/CyberArk-AOB-EventBus",
+                      {
+                        "solution_region": {
+                          "Ref": "SolutionRegion"
+                        }
+                      },
+                      {
+                        "solution_account": {
+                          "Ref": "SolutionAccountId"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
           }
         ]
       }
@@ -162,7 +188,7 @@
     },
     "SolutionRegion": {
       "Type": "String",
-      "Description": "The Region where the min solution is deployed"
+      "Description": "The Region where the main solution is deployed"
     }
   },
   "Conditions": {
@@ -177,6 +203,41 @@
               "Ref": "AWS::AccountId"
             }
           ]
+        }
+      ]
+    },
+    "ShouldCreateEventBridgeResources": {
+      "Fn::Or": [
+        {
+          "Fn::And": [
+            {
+              "Fn::Not": [
+                {
+                  "Fn::Equals": [
+                    {
+                      "Ref": "SolutionRegion"
+                    },
+                    {
+                      "Ref": "AWS::Region"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "SolutionAccountId"
+                },
+                {
+                  "Ref": "AWS::AccountId"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Condition": "ShouldCreateAssumeRole"
         }
       ]
     }

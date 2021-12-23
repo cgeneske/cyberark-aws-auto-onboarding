@@ -14,29 +14,24 @@ pvwa_integration_class = PvwaIntegration()
 def lambda_handler(event, context):
     logger.trace(context, caller_name='lambda_handler')
     logger.info('Parsing event')
-    try:
-        message = event["Records"][0]["Sns"]["Message"]
-        data = json.loads(message)
-    except Exception as e:
-        logger.error(f"Error on retrieving Message Data from Event Message. Error: {e}")
 
     try:
-        instance_id = data["detail"]["instance-id"]
+        instance_id = event["detail"]["instance-id"]
     except Exception as e:
         logger.error(f"Error on retrieving Instance Id from Event Message. Error: {e}")
 
     try:
-        action_type = data["detail"]["state"]
+        action_type = event["detail"]["state"]
     except Exception as e:
         logger.error(f"Error on retrieving Action Type from Event Message. Error: {e}")
 
     try:
-        event_account_id = data["account"]
+        event_account_id = event["account"]
     except Exception as e:
         logger.error(f"Error on retrieving Event Account Id from Event Message. Error: {e}")
 
     try:
-        event_region = data["region"]
+        event_region = evnt["region"]
         solution_account_id = context.invoked_function_arn.split(':')[4]
         log_name = context.log_stream_name if context.log_stream_name else "None"
     except Exception as e:

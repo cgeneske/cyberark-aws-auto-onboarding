@@ -547,62 +547,96 @@
         "TableName": "Instances"
       }
     },
-    "SubscriptionStackRole": {
-      "Type": "AWS::IAM::Role",
+    "ElasticityEventBus": {
+      "Type": "AWS::Events::EventBus",
       "Properties": {
-        "RoleName": "CyberArk-AOB-SubscribeStackRole",
-        "AssumeRolePolicyDocument": {
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Principal": {
-                "Service": [
-                  "cloudformation.amazonaws.com"
-                ]
-              },
-              "Action": [
-                "sts:AssumeRole"
-              ]
+        "Name": "CyberArk-AOB-ElasticityEventBus"
+      }
+    },
+    "EventBusPolicyOrgs": {
+      "Type": "AWS::Events::EventBusPolicy",
+      "Properties": {
+        "StatementId": "AwsOrgPutEvents",
+        "Statement": {
+          "Effect": "Allow",
+          "Principal": "*",
+          "Action": "events:PutEvents",
+          "Resource":{
+            "Fn::GetAtt": [
+              "ElasticityEventBus",
+              "Arn"
+            ]
+          },
+          "Condition": {
+            "StringEquals": {
+              "aws:PrincipalOrgID": {
+                "Ref": "AWSOrgId"
+              }
             }
-          ]
+          }
         }
       }
     },
-    "SubscriptionStackRolePolicy": {
-      "Type": "AWS::IAM::Policy",
+    "EventBusRule": {
+      "Type": "AWS::Events::Rule",
       "Properties": {
-        "PolicyName": "SubscribeToSNSTopic",
-        "PolicyDocument": {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Action": [
-                "sns:Subscribe",
-                "sns:Unsubscribe"
-              ],
-              "Resource": "arn:aws:sns:*:*:CyberArkAOBTopic"
-            },
-            {
-              "Effect": "Allow",
-              "Action": [
-                "lambda:AddPermission",
-                "lambda:RemovePermission"
-              ],
-              "Resource": {
-                "Fn::GetAtt": [
-                  "ElasticityLambda",
-                  "Arn"
-                ]
-              }
-            }
-          ]
+        "EventBusName": {
+          "Ref": "ElasticityEventBus"
         },
-        "Roles": [
+        "Name": "CyberArk-AOB-EC2_State_Change",
+        "State": "ENABLED",
+        "Description": "Triggers CyberArk AOB Elasticity Lambda for EC2 running and terminated state change events",
+        "EventPattern": {
+          "detail-type": [
+            "EC2 Instance State-change Notification"
+          ],
+          "source": [
+            "aws.ec2"
+          ],
+          "detail": {
+            "state": [
+              "running",
+              "terminated"
+            ]
+          }
+        },
+        "Targets": [
           {
-            "Ref": "SubscriptionStackRole"
+            "Arn": {
+              "Fn::GetAtt": [
+                "ElasticityLambda",
+                "Arn"
+              ]
+            },
+            "Id": "CyberArk-AOB-MultiRegion-CF-ElasticityLambda"
           }
         ]
+      }
+    },
+    "EventBusLambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Effect": "Allow",
+        "Action": "lambda:InvokeFunction",
+        "Resource": {
+          "Fn::GetAtt": [
+            "ElasticityLambda",
+            "Arn"
+          ]
+        },
+        "Principal": {
+          "Service": "events.amazonaws.com"
+        },
+        "Condition": {
+          "ArnLike": {
+            "AWS:SourceArn": {
+              "Fn::GetAtt": [
+                "EventBusRule",
+                "Arn"
+              ]
+            }
+          }
+        }
       }
     }
   },
@@ -623,6 +657,10 @@
     "PVWASG": {
       "Type": "AWS::EC2::SecurityGroup::Id",
       "Description": "Security Group(s) of the PVWA."
+    },
+    "AWSOrgId": {
+      "Type": "String",
+      "Description": "Your AWS Organization ID, found from the AWS Organizations dashboard (e.g. o-<unique identifier>)"
     }
   },
   "Conditions": {},
@@ -637,7 +675,8 @@
             "LambdasBucket",
             "ComponentsVPC",
             "PVWASG",
-            "ComponentsSubnet"
+            "ComponentsSubnet",
+            "AWSOrgId"
           ]
         }
       ],
@@ -653,6 +692,9 @@
         },
         "PVWASG": {
           "default": "PVWA Security Group(s):"
+        },
+        "AWSOrgId": {
+          "default": "AWS Organization ID:"
         }
       }
     }
