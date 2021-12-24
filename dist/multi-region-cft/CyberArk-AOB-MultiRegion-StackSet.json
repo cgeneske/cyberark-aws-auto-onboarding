@@ -25,21 +25,7 @@
         "Targets": [
           {
             "Arn": {
-              "Ref": {
-                "Fn::Sub": [
-                  "arn:aws:events:{solution_region}:{solution_account}:event-bus/CyberArk-AOB-EventBus",
-                  {
-                    "solution_region": {
-                      "Ref": "SolutionRegion"
-                    }
-                  },
-                  {
-                    "solution_account": {
-                      "Ref": "SolutionAccountId"
-                    }
-                  }
-                ]
-              }
+              "Fn::Sub": "arn:aws:events:${SolutionRegion}:${SolutionAccountId}:event-bus/CyberArk-AOB-ElasticityEventBus"
             },
             "Id": "CyberArk-AOB-ElasticityEventBus",
             "RoleArn": {
@@ -88,19 +74,7 @@
                   "Effect": "Allow",
                   "Action": "events:PutEvents",
                   "Resource": {
-                    "Fn::Sub": [
-                      "arn:aws:events:{solution_region}:{solution_account}:event-bus/CyberArk-AOB-EventBus",
-                      {
-                        "solution_region": {
-                          "Ref": "SolutionRegion"
-                        }
-                      },
-                      {
-                        "solution_account": {
-                          "Ref": "SolutionAccountId"
-                        }
-                      }
-                    ]
+                    "Fn::Sub": "arn:aws:events:${SolutionRegion}:${SolutionAccountId}:event-bus/CyberArk-AOB-ElasticityEventBus"
                   }
                 }
               ]
@@ -130,14 +104,7 @@
               "Principal": {
                 "AWS": [
                   {
-                    "Fn::Sub": [
-                      "arn:aws:iam::${SolutionAccountId}:role/CyberArk-AOB-ElasticityLambdaRole",
-                      {
-                        "SolutionAccountId": {
-                          "Ref": "SolutionAccountId"
-                        }
-                      }
-                    ]
+                    "Fn::Sub": "arn:aws:iam::${SolutionAccountId}:role/CyberArk-AOB-ElasticityLambdaRole"
                   }
                 ]
               },
