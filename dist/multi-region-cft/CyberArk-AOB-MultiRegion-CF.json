@@ -558,6 +558,9 @@
     "EventBusPolicyOrgs": {
       "Type": "AWS::Events::EventBusPolicy",
       "Properties": {
+        "EventBusName": {
+          "Ref": "ElasticityEventBus"
+        },
         "StatementId": "AwsOrgPutEvents",
         "Statement": {
           "Effect": "Allow",
@@ -618,26 +621,16 @@
     "EventBusLambdaPermission": {
       "Type": "AWS::Lambda::Permission",
       "Properties": {
-        "Effect": "Allow",
         "Action": "lambda:InvokeFunction",
-        "Resource": {
+        "FunctionName": {
+          "Ref": "ElasticityLambda"
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
           "Fn::GetAtt": [
-            "ElasticityLambda",
+            "EventBusRule",
             "Arn"
           ]
-        },
-        "Principal": {
-          "Service": "events.amazonaws.com"
-        },
-        "Condition": {
-          "ArnLike": {
-            "AWS:SourceArn": {
-              "Fn::GetAtt": [
-                "EventBusRule",
-                "Arn"
-              ]
-            }
-          }
         }
       }
     }
