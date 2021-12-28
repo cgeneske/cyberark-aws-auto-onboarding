@@ -33,7 +33,7 @@ def lambda_handler(event, context):
         logger.error(f"Error on retrieving Event Account Id from Event Message. Error: {e}")
 
     try:
-        event_region = evnt["region"]
+        event_region = event["region"]
         solution_account_id = context.invoked_function_arn.split(':')[4]
         log_name = context.log_stream_name if context.log_stream_name else "None"
     except Exception as e:
