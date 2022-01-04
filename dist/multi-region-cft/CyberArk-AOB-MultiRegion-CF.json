@@ -651,7 +651,7 @@
     },
     "PVWASG": {
       "Type": "AWS::EC2::SecurityGroup::Id",
-      "Description": "Security Group(s) of the PVWA."
+      "Description": "Security Group of the PVWA."
     },
     "AWSOrgId": {
       "Type": "String",
@@ -686,7 +686,7 @@
           "default": "VPC:"
         },
         "PVWASG": {
-          "default": "PVWA Security Group(s):"
+          "default": "PVWA Security Group:"
         },
         "AWSOrgId": {
           "default": "AWS Organization ID:"
