@@ -22,9 +22,9 @@ This solution supports CyberArk environments that are deployed in the Cloud and 
 - Automatic onboarding and management of new AWS instances upon spin up
 - Automatic de-provisioning of accounts for terminated AWS instances
 - Near real time onboarding of new instances spinning up  
-- Flexible CyberArk Safe targeting for account onboarding - Mix and match per-instance, per-account, and global safe scopes
-- Complete multi-region and multi-account (within the AWS Organization scope) coverage via single solution deployment
-- Optional CyberArk Conjur integration allowing for JIT retrieval of the Vault User secret needed for CyberArk REST API calls
+- Flexible CyberArk Safe targeting for account onboarding
+- Complete multi-region and multi-account (within the AWS Organization scope) coverage
+- Optional CyberArk Conjur integration for the Vault User secret
 
 # Prerequisites
 This solution requires the following:
@@ -135,7 +135,7 @@ convention: `AWS.[AWSAccount].[Region].[KeyPairName]` Example - AWS.1231231231.u
 
 ### Environment Type and Verification Keys
 There are two options for Environment Type: `Production` or `POC`.  The selection made governs whether the solution Lambdas 
-will verify the PVWA's SSL/TLS certificate has been issued by a trusted source.  This does not impact whether HTTPS is used,
+will verify the PVWA/Conjur SSL certificate has been issued by a trusted source.  This does not impact whether HTTPS is used,
 HTTPS is _always_ used.  In `POC` mode, SSL certificate verification is disabled and thus, verification key parameters 
 are not utilized or required.  In `Production` mode, SSL certificate verification is enabled and the verification key 
 parameters are utilized (and correct contents are crucial to an error-free deployment).  
