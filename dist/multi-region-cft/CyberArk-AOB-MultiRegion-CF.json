@@ -582,12 +582,46 @@
         }
       }
     },
-    "EventBusRule": {
+    "EventBusRuleCustomBus": {
       "Type": "AWS::Events::Rule",
       "Properties": {
         "EventBusName": {
           "Ref": "ElasticityEventBus"
         },
+        "Name": "CyberArk-AOB-EC2_State_Change",
+        "State": "ENABLED",
+        "Description": "Triggers CyberArk AOB Elasticity Lambda for EC2 running and terminated state change events",
+        "EventPattern": {
+          "detail-type": [
+            "EC2 Instance State-change Notification"
+          ],
+          "source": [
+            "aws.ec2"
+          ],
+          "detail": {
+            "state": [
+              "running",
+              "terminated"
+            ]
+          }
+        },
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "ElasticityLambda",
+                "Arn"
+              ]
+            },
+            "Id": "CyberArk-AOB-MultiRegion-CF-ElasticityLambda"
+          }
+        ]
+      }
+    },
+    "EventBusRuleDefaultBus": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "EventBusName": "default",
         "Name": "CyberArk-AOB-EC2_State_Change",
         "State": "ENABLED",
         "Description": "Triggers CyberArk AOB Elasticity Lambda for EC2 running and terminated state change events",
