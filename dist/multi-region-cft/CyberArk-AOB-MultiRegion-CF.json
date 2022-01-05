@@ -582,7 +582,7 @@
         }
       }
     },
-    "EventBusRuleCustomBus": {
+    "EventBusRuleCustom": {
       "Type": "AWS::Events::Rule",
       "Properties": {
         "EventBusName": {
@@ -618,7 +618,7 @@
         ]
       }
     },
-    "EventBusRuleDefaultBus": {
+    "EventBusRuleDefaul": {
       "Type": "AWS::Events::Rule",
       "Properties": {
         "EventBusName": "default",
@@ -652,7 +652,7 @@
         ]
       }
     },
-    "EventBusLambdaPermission": {
+    "EventBusLambdaPermissionDefault": {
       "Type": "AWS::Lambda::Permission",
       "Properties": {
         "Action": "lambda:InvokeFunction",
@@ -662,7 +662,23 @@
         "Principal": "events.amazonaws.com",
         "SourceArn": {
           "Fn::GetAtt": [
-            "EventBusRule",
+            "EventBusRuleDefault",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "EventBusLambdaPermissionCustom": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "ElasticityLambda"
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "EventBusRuleCustom",
             "Arn"
           ]
         }
