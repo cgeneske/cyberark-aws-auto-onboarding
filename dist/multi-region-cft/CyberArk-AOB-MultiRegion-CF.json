@@ -618,7 +618,7 @@
         ]
       }
     },
-    "EventBusRuleDefaul": {
+    "EventBusRuleDefault": {
       "Type": "AWS::Events::Rule",
       "Properties": {
         "EventBusName": "default",
