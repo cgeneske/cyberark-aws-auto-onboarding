@@ -81,7 +81,7 @@ Parameters:
     Type: String
     Description: >-
       Name of the Safe that will store all the Unix accounts created by the
-      solution. The deployment will fail if the safe already exist.
+      solution. If the safe doesn't exist, the solution will create it.
     AllowedPattern: '^[^\\:\*<>\"\.\|\/]*$'
     MinLength: '1'
     MaxLength: '28'
@@ -89,7 +89,7 @@ Parameters:
     Type: String
     Description: >-
       Name of the Safe that will store all the Windows accounts created by the
-      solution. The deployment will fail if the safe already exist.
+      solution. If the safe doesn't exist, the solution will create it.
     AllowedPattern: '^[^\\:\*<>\"\.\|\/]*$'
     MinLength: '1'
     MaxLength: '28'
@@ -115,8 +115,8 @@ Parameters:
   KeyPairsSafe:
     Type: String
     Description: >-
-      Name of the safe that will store all key-pairs used by the solution. The
-      deployment will fail if the safe already exist.
+      Name of the safe that will store all key-pairs used by the solution. If 
+      the safe doesn't exist, the solution will create it.
     AllowedPattern: '^[^\\:\*<>\"\.\|\/]*$'
     MinLength: '1'
     MaxLength: '28'
@@ -168,7 +168,7 @@ Metadata:
       SafeHandlerLambdaARN:
         default: 'ARN of SafeHandlerLambda. An output of first CloudFormation Templates:'
       S3BucketWithVerificationKey:
-        default: 'Verificaion Key Bucket:'
+        default: 'Verification Key Bucket:'
       PvwaIP:
         default: 'PVWA IP/Host Name:'
       PVWAVerificationKeyFileName:
