@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  EventBridgeRuleInstanceChangeTrigger:
+    Type: 'AWS::Events::Rule'
+    Condition: ShouldCreateEventBridgeResources
+    Properties:
+      Description: >-
+        Event Bridge event rule which fires on create/start/termination of an
+        EC2 Instance 
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - EC2 Instance State-change Notification
+        detail:
+          state:
+            - running
+            - terminated
+      Name: CyberArk-AOB-EC2_State_Change
+      State: ENABLED
+      Targets:
+        - Arn: !Sub >-
+            arn:aws:events:${SolutionRegion}:${SolutionAccountId}:event-bus/CyberArk-AOB-ElasticityEventBus
+          Id: CyberArk-AOB-ElasticityEventBus
+          RoleArn: !GetAtt 
+            - EventBridgeIAMRole
+            - Arn
+  EventBridgeIAMRole:
+    Type: 'AWS::IAM::Role'
+    Condition: ShouldCreateEventBridgeResources
+    Properties:
+      RoleName: !Join 
+        - ''
+        - - CyberArk-AOB-CrossEventBusRole-
+          - !Ref 'AWS::Region'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CyberArk-AOB-CrossEventBusPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 'events:PutEvents'
+                Resource: !Sub >-
+                  arn:aws:events:${SolutionRegion}:${SolutionAccountId}:event-bus/CyberArk-AOB-ElasticityEventBus
+  AssumeRoleForElasticityLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Condition: ShouldCreateAssumeRole
+    Properties:
+      RoleName: !Join 
+        - ''
+        - - CyberArk-AOB-AssumeRoleForElasticityLambda-
+          - !Ref 'AWS::Region'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Sub >-
+                  arn:aws:iam::${SolutionAccountId}:role/CyberArk-AOB-ElasticityLambdaRole
+            Action:
+              - 'sts:AssumeRole'
+  AssumeRoleForElasticityLambdaPolicy:
+    Type: 'AWS::IAM::Policy'
+    Condition: ShouldCreateAssumeRole
+    Properties:
+      PolicyName: ElasticityLambdaAccess
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ec2:DescribeImages'
+              - 'ec2:GetPasswordData'
+              - 'ec2:DescribeInstances'
+              - 'ec2:DescribeNetworkInterfaces'
+              - 'ec2:DescribeVpcs'
+              - 'ec2:DescribeVpcAttribute'
+              - 'ec2:DescribeTags'
+            Resource: '*'
+      Roles:
+        - !Ref AssumeRoleForElasticityLambdaRole
+Description: ''
+Parameters:
+  SolutionAccountId:
+    Type: String
+    Description: The AccountId where the main solution is deployed
+  SolutionRegion:
+    Type: String
+    Description: The Region where the main solution is deployed
+Conditions:
+  ShouldCreateAssumeRole: !Not 
+    - !Equals 
+      - !Ref SolutionAccountId
+      - !Ref 'AWS::AccountId'
+  ShouldCreateEventBridgeResources: !Or 
+    - !And 
+      - !Not 
+        - !Equals 
+          - !Ref SolutionRegion
+          - !Ref 'AWS::Region'
+      - !Equals 
+        - !Ref SolutionAccountId
+        - !Ref 'AWS::AccountId'
+    - !Condition ShouldCreateAssumeRole
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: General Parameters
+        Parameters:
+          - SolutionAccountId
+          - SolutionRegion
+    ParameterLabels:
+      SolutionAccountId:
+        default: Solution AccountId
+      SolutionRegion:
+        default: Solution Region
