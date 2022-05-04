@@ -40,6 +40,10 @@ Resources:
             Principal:
               Service: events.amazonaws.com
             Action: 'sts:AssumeRole'
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
       Policies:
         - PolicyName: CyberArk-AOB-CrossEventBusPolicy
           PolicyDocument:
@@ -49,11 +53,52 @@ Resources:
                 Action: 'events:PutEvents'
                 Resource: !Sub >-
                   arn:aws:events:${SolutionRegion}:${SolutionAccountId}:event-bus/CyberArk-AOB-ElasticityEventBus
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+  KeyPairLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Condition: ShouldCreateEventBridgeResources
+    Properties:
+      RoleName: !Join
+        - ''
+        - - CyberArk-AOB-KeyPairNotifyLambdaRole-
+          - !Ref 'AWS::Region'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CyberArk-AOB-KeyPairLambdaRole
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 'events:PutEvents'
+                Resource: !Sub >-
+                  arn:aws:events:${SolutionRegion}:${SolutionAccountId}:event-bus/CyberArk-AOB-ElasticityEventBus
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeKeyPairs'
+                  - 'ec2:DeleteKeyPair'
+                Resource: '*'
   AssumeRoleForElasticityLambdaRole:
     Type: 'AWS::IAM::Role'
     Condition: ShouldCreateAssumeRole
     Properties:
-      RoleName: !Join 
+      RoleName: !Join
         - ''
         - - CyberArk-AOB-AssumeRoleForElasticityLambda-
           - !Ref 'AWS::Region'
@@ -83,9 +128,110 @@ Resources:
               - 'ec2:DescribeVpcs'
               - 'ec2:DescribeVpcAttribute'
               - 'ec2:DescribeTags'
+              - 'ec2:CreateKeyPair'
+              - 'ec2:DescribeKeyPairs'
             Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'lambda:GetFunctionConfiguration'
+              - 'lambda:UpdateFunctionConfiguration'
+            Resource: !GetAtt KeyPairLambda.Arn
       Roles:
         - !Ref AssumeRoleForElasticityLambdaRole
+  KeyPairLambda:
+    Type: 'AWS::Lambda::Function'
+    Condition: ShouldCreateEventBridgeResources
+    Properties:
+      Description: |
+        Triggers Elasticity Lambda in Solution Account to create EC2 Key Pair via EventBus Notification 
+        or Deletes the solution's EC2 Key Pair Public Key
+      FunctionName: CyberArk-AOB-KeyPairLifecycleLambda
+      Handler: index.lambda_handler
+      Runtime: python3.9
+      Timeout: 10
+      Role:
+        !GetAtt KeyPairLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import os
+          import json
+          import boto3
+          import cfnresponse
+
+
+          def lambda_handler(event, context):
+              if event['RequestType'] == 'Create':
+                  try:
+                      print('Beginning EC2 key pair creation sequence, attempting to place event on the EventBus')
+                      event_region = event['StackId'].split(':')[3]
+                      solution_account = event['ResourceProperties']['SolutionAccountId']
+                      solution_region = event['ResourceProperties']['SolutionRegion']
+                      client = boto3.client('events', region_name=solution_region)
+                      response = client.put_events(
+                          Entries=[
+                              {
+                                  'Source': 'cyberark.aob',
+                                  'EventBusName': f'arn:aws:events:{solution_region}:{solution_account}:event-bus/CyberArk-AOB-ElasticityEventBus',
+                                  'DetailType': 'CyberArk AOB EC2 Key Pair Lifecycle Notification',
+                                  'Detail': json.dumps({
+                                      'method': 'keypair_lifecycle',
+                                      'action': 'create',
+                                      'source_region': event_region
+                                  })
+                              }
+                          ]
+                      )
+                      for bridge_event in response['Entries']:
+                          if 'EventId' not in bridge_event:
+                              response_str = f'Event failed to be placed on the EventBus -- ' \
+                                             f'ErrorCode: {bridge_event["ErrorCode"]} | ErrorMessage: {bridge_event["ErrorMessage"]}'
+                              print(response_str)
+                              return cfnresponse.send(event, context, cfnresponse.FAILED, response_str)
+                          else:
+                              print(f'Event {bridge_event["EventId"]} successfully placed on the EventBus')
+                      return cfnresponse.send(event, context, cfnresponse.SUCCESS, None)
+                  except Exception as e:
+                      print(f'An unexpected error has occurred: {str(e)}')
+                      return cfnresponse.send(event, context, cfnresponse.FAILED, {'Message': str(e)})
+              elif event['RequestType'] == 'Delete':
+                  # Attempting cleanup of public key in AWS, retaining private key in the CyberArk Vault
+                  print('Beginning EC2 key pair public key cleanup')
+                  keypair_name = os.environ.get('AOB_EC2_KEYPAIR_NAME')
+                  if keypair_name is None:
+                      print("Environment variable containing keypair name was never defined by AOB Elasticity Lambda, skipping cleanup")
+                      return cfnresponse.send(event, context, cfnresponse.SUCCESS, None)
+                  try:
+                      ec2_client = boto3.client('ec2')
+                      ec2_client.delete_key_pair(KeyName=keypair_name)
+                      print(f'Key Pair {keypair_name} successfully deleted')
+                      return cfnresponse.send(event, context, cfnresponse.SUCCESS, None)
+                  except Exception as e:
+                      if e.response['Error']['Code'] == 'InvalidKeyPair.NotFound':
+                          print(f'Key Pair {keypair_name} not found, nothing to remove')
+                          return cfnresponse.send(event, context, cfnresponse.SUCCESS, None)
+                      return cfnresponse.send(event, context, cfnresponse.FAILED, {'Message': str(e)})
+              else:
+                  # No actions necessary for Custom Resource Updates
+                  return cfnresponse.send(event, context, cfnresponse.SUCCESS, None)
+  KeyPairLifecycle:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Condition: ShouldCreateAssumeRole
+    Version: '1.0'
+    Properties:
+      ServiceToken: !GetAtt KeyPairLambda.Arn
+      SolutionAccountId: !Ref SolutionAccountId
+      SolutionRegion: !Ref SolutionRegion
+    DependsOn:
+      - AssumeRoleForElasticityLambdaRole
+      - AssumeRoleForElasticityLambdaPolicy
+  KeyPairLifecycleSolutionAccount:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Condition: ShouldCreateSolutionAccountKeyPairLifecycle
+    Version: '1.0'
+    Properties:
+      ServiceToken: !GetAtt KeyPairLambda.Arn
+      SolutionAccountId: !Ref SolutionAccountId
+      SolutionRegion: !Ref SolutionRegion
 Description: ''
 Parameters:
   SolutionAccountId:
@@ -109,6 +255,11 @@ Conditions:
         - !Ref SolutionAccountId
         - !Ref 'AWS::AccountId'
     - !Condition ShouldCreateAssumeRole
+  ShouldCreateSolutionAccountKeyPairLifecycle: !And
+    - !Condition ShouldCreateEventBridgeResources
+    - !Equals
+      - !Ref SolutionAccountId
+      - !Ref 'AWS::AccountId'
 Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:

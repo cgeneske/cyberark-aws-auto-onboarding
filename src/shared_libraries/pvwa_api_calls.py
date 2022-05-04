@@ -37,6 +37,46 @@ def create_account_on_vault(session, account_name, account_password, store_param
     return False, f"Error Creating Account, Status Code:{rest_response.status_code}"
 
 
+def create_key_pair_in_vault(session, aws_key_name, private_key_value, pvwa_url, safe_name,
+                             platform_name, aws_account_id, aws_region_name):
+    logger.trace(session, aws_key_name, pvwa_url, safe_name, aws_account_id,
+                 aws_region_name, caller_name='create_key_pair_in_vault')
+    header = DEFAULT_HEADER
+    header.update({"Authorization": session})
+
+    trimmed_pem_key = str(private_key_value).replace("\n", "\\n")
+    trimmed_pem_key = trimmed_pem_key.replace("\r", "\\r")
+
+    # AWS.<AWS Account>.<Region name>.<key pair name>
+    unique_user_name = f"AWS.{aws_account_id}.{aws_region_name}.{aws_key_name}"
+    logger.info(f"Creating account with username:{unique_user_name}")
+
+    url = f"{pvwa_url}/WebServices/PIMServices.svc/Account"
+    data = f"""
+            {{
+              "account" : {{
+                  "safe":"{safe_name}",
+                  "platformID":"{platform_name}",
+                  "address":"AWS",
+                  "password":"{trimmed_pem_key}",
+                  "username":"{unique_user_name}",
+                  "disableAutoMgmt":"true",
+                  "disableAutoMgmtReason":"Unmanaged account"
+              }}
+            }}
+        """
+    rest_response = pvwa_integration_class.call_rest_api_post(url, data, header)
+
+    if rest_response.status_code == requests.codes.created:
+        logger.info(f"Key Pair created successfully in safe '{safe_name}'")
+        return True
+    elif rest_response.status_code == requests.codes.conflict:
+        logger.info(f"Key Pair created already exists in safe {safe_name}")
+        return True
+    logger.error(f"Failed to create Key Pair in safe {safe_name}, status code:{rest_response.status_code}")
+    return False
+
+
 def rotate_credentials_immediately(session, pvwa_url, account_id, instance_id):
     logger.trace(session, pvwa_url, account_id, instance_id, caller_name='rotate_credentials_immediately')
     logger.info(f'Rotating {instance_id} credentials')

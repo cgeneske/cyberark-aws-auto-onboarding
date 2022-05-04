@@ -19,12 +19,12 @@ all AWS accounts and regions within the respective AWS Organization.
 This solution supports CyberArk environments that are deployed in the Cloud and in hybrid architectures.
 
 # Features
-- Automatic onboarding and management of new AWS instances upon spin up
-- Automatic de-provisioning of accounts for terminated AWS instances
-- Near real time onboarding of new instances spinning up  
-- Flexible CyberArk Safe targeting for account onboarding
-- Complete multi-region and multi-account (within the AWS Organization scope) coverage
-- Optional CyberArk Conjur integration for the Vault User secret
+- Automatic on-boarding and management of new AWS instances upon spin up in near real-time
+- Automatic de-provisioning of accounts for terminated AWS instances in near real-time
+- Flexible CyberArk Safe targeting for account on-boarding activity
+- Complete multi-region and multi-account coverage for an AWS Organization via a single solution deployment
+- **[Optional]** Automatic EC2 key pair management (creates and deletes a named key pair with the solution)
+- **[Optional]** CyberArk Conjur integration for the PasswordVault API secret
 
 # Prerequisites
 This solution requires the following:
@@ -107,17 +107,24 @@ must be the owner of these Safes with the following permissions:
 
 
 
-1. Download cyberark-aws-auto-onboarding solution zip files and CloudFormation template from
-[https://github.com/cyberark/cyberark-aws-auto-onboarding/tree/master/dist](https://github.com/cyberark/cyberark-aws-auto-onboarding/tree/master/dist)
-
-2. Upload the solution to your S3 Bucket in the same region you want to deploy the solution. 
-3. Deploy CyberArk-AOB-MultiRegion-CF.json.
-4. Deploy CyberArk-AOB-MultiRegion-CF-VaultEnvCreation.yaml.
+1. Download the CloudFormation templates from
+[here](https://github.com/cgeneske/cyberark-aws-auto-onboarding/tree/master/dist/multi-region-cft).
+2. Download the solution ZIP files [aws_ec2_auto_onboarding.zip](https://github.com/cgeneske/cyberark-aws-auto-onboarding/raw/master/aws_ec2_auto_onboarding.zip)
+and [aws_environment_setup.zip](https://github.com/cgeneske/cyberark-aws-auto-onboarding/raw/master/aws_environment_setup.zip).
+3. Upload the solution ZIP files to a S3 Bucket in the same region you want to deploy the solution into.
+4. Deploy a CloudFormation Stack using template `CyberArk-AOB-MultiRegion-CF.yaml`.
+5. Deploy a CloudFormation Stack using template `CyberArk-AOB-MultiRegion-CF-VaultEnvCreation.yaml`.
    1. For more information on the _Environment Type and Verification Key_ parameters that are prompted for in this template, 
    see the section below [Environment Type and Verification Keys](#environment-type-and-verification-keys).
    2. For more information on the _Conjur Integration_ parameters that are prompted for in this template, see the section
-   below [CyberArk Conjur Integration](#cyberark-conjur-integration)
-5. **[Situational]** - Deploy CyberArk-AOB-MultiRegion-StackSet.json in accordance with one of the following scenarios:
+   below [CyberArk Conjur Integration](#cyberark-conjur-integration).
+   3. Under the **Optional: Create new KeyPair for the solution** section of this template you may optionally specify a Key Pair Name and Platform.  If
+   you define a Key Pair Name, a new EC2 key pair by that name will be created in the Solution Account and automatically vaulted.  Additionally,
+   if the `CyberArk-AOB-MultiRegion-Stackset.yaml` template is also deployed to provide solution coverage for additional regions and 
+   AWS accounts, key pairs will be automatically created by this name and vaulted for those accounts and regions respectively.
+   >**Note**: If `Key Pair Name` is left blank, no EC2 key pairs will be created by the solution.
+6. **[Situational]** - Deploy a CloudFormation Stack or StackSet using template `CyberArk-AOB-MultiRegion-StackSet.yaml` 
+in accordance with one of the following scenarios:
    1. _For a single-account, single-region deployment_ - **this template is not required and may be skipped</ins>** as all necessary 
    resources to enable the solution account/region itself are deployed via the previous two CloudFormation templates.
    2. _For a single-account, multi-region deployment_ - You must deploy this template into all targeted regions (i.e. those
@@ -125,13 +132,16 @@ must be the owner of these Safes with the following permissions:
    may be accomplished via a standard CloudFormation Stack or as a StackSet, whichever your preference.  Given a single additional 
    region for example, simply deploying as a standard stack into that region may be easiest.
    3. _For a multi-account, single/multi-region deployment_ - You must deploy this template to all target accounts and
-   regions (i.e. those containing EC2 instances you wish to include for auto on-boarding); a task that is perfectly suited for a CloudFormation StackSet.  A fully automated StackSet deployment mode 
+   regions (i.e. those containing EC2 instances you wish to include for auto on-boarding); a task that is well suited for a CloudFormation StackSet.  A fully automated StackSet deployment mode 
    using service-managed permissions (the AWS Organizations construct) is viable here, though other modes of StackSet deployment 
    (such as self-managed permissions) are also viable.
-   >**Note**: Deploying this stack into your solution account/region will not cause any harm, but take note that it will
-   not deploy any resources either and thus result in an effectively void stack.
-6. Upload the old/existing key pairs used to create instances in your AWS region to the Key Pair Safe in the Vault according to the following naming 
-convention: `AWS.[AWSAccount].[Region].[KeyPairName]` Example - AWS.1231231231.us-east-2.Mykey
+   >**Note**: Deploying this stack into your solution account/region is not required and would be a benign action, resulting in a stack that is void of any
+   > resources.  This is due to the fact that all neccessary resources for AOB to function for the solution account/region are inclusive
+   > to the `CyberArk-AOB-MultiRegion-CF.yaml` and `CyberArk-AOB-MultiRegion-VaultEnvCreation.yaml` templates.
+7. If not leveraging EC2 key pairs automatically created by the solution, or for leveraging existing key pairs that were
+originally used for creating instances in your AWS region, existing EC2 key pairs must be uploaded to the Key Pair Safe
+in the Vault according to the following naming convention: `AWS.[AWSAccount].[Region].[KeyPairName]` Example - 
+AWS.1231231231.us-east-2.Mykey
 
 ### Environment Type and Verification Keys
 There are two options for Environment Type: `Production` or `POC`.  The selection made governs whether the solution Lambdas 
@@ -168,9 +178,9 @@ HMUfpIBvFSDJ3gyICh3WZlXi/EjJKSZp4A==
 -----END CERTIFICATE-----
 ``````
 
->**Note**: If the PVWA/Conjur certificate is updated and the CA chain contains one or more new signers, you must update 
-the `AOB_[PVWA/Conjur]_Verification_Key` parameter(s) in the AWS Systems Manager parameter store with the plain text content 
-of what would be the new respective verification file, as described above.
+>**Note**: If the PVWA/Conjur certificate is updated and the CA chain contains one or more new signers, you must update
+>the `AOB_[PVWA/Conjur]_Verification_Key` parameter(s) in the AWS Systems Manager parameter store with the plain text content 
+>of what would be the new respective verification file, as described above.
 
 ### CyberArk Conjur Integration
 Integration with CyberArk Conjur is optional but highly recommended.  Below are the high-level steps
@@ -194,7 +204,7 @@ of the policy/namespace that you decide to provision these hosts into.
 template during deployment:
    1. Conjur Leader/Follower [LB] IP or FQDN that the solution will target
    2. The account name for your Conjur instance
-      1. If this value is not known it can easily be retrieved via Conjur CLI by first logging into the CLI and then issuing the command `conjur whoami`
+      1. If this value is not known it can easily be retrieved by navigating to `https://<conjur_IP/FQDN>/info`
    3. The CA certificate chain that signs your Conjur Leader/Follower [LB] SSL certificate, which must be consolidated into a single
    verification key file and uploaded to your solution S3 bucket.  See guidance under
    [Environment Type and Verification Keys](#environment-type-and-verification-keys) for more details.
@@ -202,9 +212,13 @@ template during deployment:
 For more information on CyberArk Conjur and more detailed reference to policy management and the policy statements required to accomplish
 the steps outlined above, please refer to the appropriate documentation sections from here - https://docs.cyberark.com/Product-Doc/OnlineHelp/AAM-DAP/Latest/en/Content/Resources/_TopNav/cc_Home.htm
 
-# Solution Upgrade Procedure 
-1. Replace the solution files in the bucket 
-2. Update the cloudFormation stack with the new template
+# Solution Upgrade Procedure
+2. Update Lambda `CyberArk-AOB-MultiRegion-CF-ElasticityLambda` via code source upload from solution zip `aws_ec2_auto_onboarding.zip`
+3. Execute a CloudFormation Stack Update with the new `CyberArk-AOB-MultiRegion-CF.yaml` template
+4. Upload the new `aws_environment_setup.zip` to a S3 Bucket then Delete and Re-Deploy the `CyberArk-AOB-MultiRegion-CF-VaultEnvCreation.yaml` Stack using the new template*
+5. Execute a CloudFormation StackSet Update (Edit StackSet Details) for `CyberArk-AOB-MultiRegion-StackSet.yaml`
+>***Note:** The CloudFormation Stack deployed by `CyberArk-AOB-MultiRegion-CF-VaultEnvCreation.yaml` does not support 
+> stack Update at this time as the `CreateSafe` lambda-backed custom resource cannot process an Update RequestType.
 
 # Solution Options
 ### Advanced Safe Targeting
@@ -334,3 +348,5 @@ Licensed under the Apache License, Version 2.0 (the "License"); you may not use 
 [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0)
 
 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+## This solution is provided to the community as a sample code and is not supported by CyberArk

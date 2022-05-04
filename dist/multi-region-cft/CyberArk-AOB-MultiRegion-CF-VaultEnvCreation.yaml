@@ -111,6 +111,7 @@ Resources:
       CPMWindows: !Ref CPMNameWindowsSafe
       KeyPairSafe: !Ref KeyPairsSafe
       KeyPairName: !Ref KeyPairName
+      KeyPairPlatform: !Ref KeyPairPlatform
       AWSRegionName: !Ref 'AWS::Region'
       AWSAccountId: !Ref 'AWS::AccountId'
       PVWAVerificationKeyFileName: !Ref PVWAVerificationKeyFileName
@@ -181,7 +182,12 @@ Parameters:
     MaxLength: '28'
   KeyPairName:
     Type: String
-    Description: Name of the solution's default key-pair.
+    Description: Name to use for EC2 Key Pairs created by the solution.
+    MaxLength: '255'
+  KeyPairPlatform:
+    Type: String
+    Description: SSH Key Platform ID that will be used to on-board the EC2 Key Pairs created by the solution.
+    Default: UnixSSHKeys
     MaxLength: '255'
   Environment:
     Type: String
@@ -267,6 +273,7 @@ Metadata:
           default: 'Optional: Create new KeyPair for the solution:'
         Parameters:
           - KeyPairName
+          - KeyPairPlatform
     ParameterLabels:
       Environment:
         default: 'Environment Type:'
@@ -291,7 +298,9 @@ Metadata:
       KeyPairsSafe:
         default: 'Target Safe for the Key pairs:'
       KeyPairName:
-        default: 'Key Pair name:'
+        default: 'Key Pair Name:'
+      KeyPairPlatform:
+        default: 'Key Pair Platform'
       EnableDebugLevel:
         default: 'Error Verbosity Level:'
       VaultUserSource:

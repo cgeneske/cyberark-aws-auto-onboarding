@@ -1,4 +1,6 @@
 import json
+import boto3
+import botocore.exceptions
 import urllib3
 from pvwa_integration import PvwaIntegration
 from conjur_integration import ConjurIntegration
@@ -18,30 +20,67 @@ def lambda_handler(event, context):
     logger.info('Parsing event')
 
     try:
-        instance_id = event["detail"]["instance-id"]
-    except Exception as e:
-        logger.error(f"Error on retrieving Instance Id from Event Message. Error: {e}")
-
-    try:
-        action_type = event["detail"]["state"]
-    except Exception as e:
-        logger.error(f"Error on retrieving Action Type from Event Message. Error: {e}")
-
-    try:
         event_account_id = event["account"]
     except Exception as e:
         logger.error(f"Error on retrieving Event Account Id from Event Message. Error: {e}")
+        return
 
     try:
         event_region = event["region"]
-        solution_account_id = context.invoked_function_arn.split(':')[4]
-        log_name = context.log_stream_name if context.log_stream_name else "None"
     except Exception as e:
         logger.error(f"Error on retrieving Event Region from Event Message. Error: {e}")
-    elasticity_function(instance_id, action_type, event_account_id, event_region, solution_account_id, log_name)
+        return
+
+    try:
+        event_source = event["source"]
+    except Exception as e:
+        logger.error(f"Error on retrieving Event Source from Event Message. Error: {e}")
+        return
+
+    solution_account_id = context.invoked_function_arn.split(':')[4]
+
+    if event_source == "aws.ec2":
+        try:
+            instance_id = event["detail"]["instance-id"]
+        except Exception as e:
+            logger.error(f"Error on retrieving Instance Id from Event Message. Error: {e}")
+            return
+
+        try:
+            action_type = event["detail"]["state"]
+        except Exception as e:
+            logger.error(f"Error on retrieving Action Type from Event Message. Error: {e}")
+            return
+
+        log_name = context.log_stream_name if context.log_stream_name else "None"
+
+        elasticity_function(instance_id, action_type, event_account_id, event_region, solution_account_id, log_name)
+
+    if event_source == "cyberark.aob":
+        try:
+            method = event["detail"]["method"]
+        except Exception as e:
+            logger.error(f"Error on retrieving method name from Event Message. Error: {e}")
+            return
+
+        try:
+            action = event["detail"]["action"]
+        except Exception as e:
+            logger.error(f"Error on retrieving action from Event Message. Error: {e}")
+            return
+
+        try:
+            source_region = event["detail"]["source_region"]
+        except Exception as e:
+            logger.error(f"Error on retrieving source region from Event Message. Error: {e}")
+            return
+
+        if method == "keypair_lifecycle" and action == "create":
+            keypair_create_function(event_account_id, source_region, solution_account_id)
 
 
 def elasticity_function(instance_id, action_type, event_account_id, event_region, solution_account_id, log_name):
+    logger.info(f"Beginning EC2 instance processing sequence for {instance_id}/{event_account_id}/{event_region}")
     try:
         ec2_object = aws_services.get_account_details(solution_account_id, event_account_id, event_region)
         instance_details = aws_services.get_ec2_details(instance_id, ec2_object, event_account_id)
@@ -72,47 +111,10 @@ def elasticity_function(instance_id, action_type, event_account_id, event_region
             logger.info('Unknown instance state')
             return
 
-        store_parameters_class = aws_services.get_params_from_param_store()
-        if not store_parameters_class:
+        store_parameters_class = get_parameters_and_pvwa_auth_info(solution_account_id)
+
+        if store_parameters_class is False:
             return
-        if store_parameters_class.aob_mode == 'Production':
-            # Save PVWA Verification Key in /tmp folder
-            logger.info('Saving PVWA verification key')
-            crt = open("/tmp/pvwa_server.crt", "w+")
-            crt.write(store_parameters_class.pvwa_verification_key)
-            crt.close()
-            if store_parameters_class.vault_user_source == 'CyberArk Conjur':
-                # If using Conjur, save Conjur Verification Key in /tmp folder
-                logger.info('Saving Conjur verification key')
-                crt = open("/tmp/conjur_server.crt", "w+")
-                crt.write(store_parameters_class.conjur_verification_key)
-                crt.close()
-
-        # Check for vault user source and set variables for logon
-        if store_parameters_class.vault_user_source == 'CyberArk Conjur':
-            # Using Conjur
-            if store_parameters_class.conjur_authn_host_namespace == 'root':
-                conjur_username = f'host/{solution_account_id}/CyberArk-AOB-ElasticityLambdaRole'
-            else:
-                conjur_username = f'host/{store_parameters_class.conjur_authn_host_namespace}/'\
-                                f'{solution_account_id}/CyberArk-AOB-ElasticityLambdaRole'
-            try:
-                conjur_token = conjur_integration_class.logon_conjur(store_parameters_class.conjur_hostname,
-                                                                     store_parameters_class.conjur_account,
-                                                                     store_parameters_class.conjur_authn_service_id,
-                                                                     conjur_username)
-                vault_un = conjur_integration_class.get(conjur_token, store_parameters_class.conjur_vault_username_id)
-                if not vault_un:
-                    raise Exception("The Conjur variable for vault username is empty")
-                store_parameters_class.vault_username = vault_un
-
-                vault_pw = conjur_integration_class.get(conjur_token, store_parameters_class.conjur_vault_password_id)
-                if not vault_pw:
-                    raise Exception("The Conjur Variable for vault user password is empty")
-                store_parameters_class.vault_password = vault_pw
-            except Exception as e:
-                logger.error(f'Unable to retrieve Vault User details from Conjur:\n{str(e)}')
-                return
 
         pvwa_connection_number, session_guid = aws_services.get_session_from_dynamo()
         if not pvwa_connection_number:
@@ -172,6 +174,156 @@ def elasticity_function(instance_id, action_type, event_account_id, event_region
         aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
         return
 
+
+def keypair_create_function(event_account_id, event_region, solution_account_id):
+    logger.info(f"Beginning EC2 Key Pair lifecycle-create sequence for {event_account_id}/{event_region}")
+    store_parameters_class = get_parameters_and_pvwa_auth_info(solution_account_id)
+
+    if store_parameters_class is False:
+        return
+
+    if not store_parameters_class.key_pair_name:
+        logger.info("AOB_KeyPair_Name parameter is empty, the solution will not create a new Key Pair")
+        return
+
+    if solution_account_id == event_account_id:
+        try:
+            ec2_client = boto3.client('ec2', region_name=event_region)
+            lambda_client = boto3.client('lambda', region_name=event_region)
+        except Exception as e:
+            logger.error(f'Error on creating boto3 client: {str(e)}')
+            return
+    else:
+        try:
+            logger.info('Assuming role for key-pair creation')
+            sts_connection = boto3.client('sts')
+            sts_token = sts_connection.assume_role(RoleArn=f"arn:aws:iam::{event_account_id}"
+                                                   ":role/CyberArk-AOB-AssumeRoleForElasticityLambda-"
+                                                   f"{event_region}",
+                                                   RoleSessionName="cross_acct_lambda")
+
+            # Creating ec2 client using STS token detail
+            ec2_client = boto3.client('ec2', region_name=event_region,
+                                      aws_access_key_id=sts_token['Credentials']['AccessKeyId'],
+                                      aws_secret_access_key=sts_token['Credentials']['SecretAccessKey'],
+                                      aws_session_token=sts_token['Credentials']['SessionToken'])
+
+            # Creating lambda client using STS token detail
+            lambda_client = boto3.client('lambda', region_name=event_region,
+                                         aws_access_key_id=sts_token['Credentials']['AccessKeyId'],
+                                         aws_secret_access_key=sts_token['Credentials']['SecretAccessKey'],
+                                         aws_session_token=sts_token['Credentials']['SessionToken'])
+        except Exception as e:
+            logger.error(f'Error retrieving STS token for account {event_account_id} : {str(e)}')
+            return
+
+    # Creating EC2 Key Pair
+    aws_private_key = aws_services.create_new_key_pair(store_parameters_class.key_pair_name, ec2_client)
+
+    if aws_private_key is False:
+        # Unexpected error creating EC2 Key Pair, can't provision in the Vault
+        return
+
+    if aws_private_key is True:
+        # EC2 Key Pair already exists in AWS, can't provision in the Vault
+        return
+
+    # Adding key pair name to target account lifecycle lambda
+    try:
+        response = lambda_client.update_function_configuration(
+                       FunctionName='CyberArk-AOB-KeyPairLifecycleLambda',
+                       Environment={
+                           'Variables': {
+                                'AOB_EC2_KEYPAIR_NAME': store_parameters_class.key_pair_name
+                           }
+                       }
+                    )
+        if response:
+            logger.info(f'EC2 key pair name successfully added to the lifecycle lambda in account {event_account_id}')
+        else:
+            logger.error(f'EC2 key pair has not been updated for lifecycle lambda for account {event_account_id}')
+    except Exception as e:
+        logger.error(f'Error updating EC2 key pair lifecycle lambda for account {event_account_id} : {str(e)}')
+
+    # Reserving PVWA connection number in dynamoDB
+    pvwa_connection_number, session_guid = aws_services.get_session_from_dynamo()
+    if not pvwa_connection_number:
+        return
+
+    # Authenticating to PVWA
+    session_token = pvwa_integration_class.logon_pvwa(store_parameters_class.vault_username,
+                                                      store_parameters_class.vault_password,
+                                                      store_parameters_class.pvwa_url,
+                                                      pvwa_connection_number)
+    if not session_token:
+        aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
+        return
+
+    # Adding EC2 Key Pair to the Vault
+    key_pair_created = pvwa_api_calls.create_key_pair_in_vault(session_token, store_parameters_class.key_pair_name,
+                                                               aws_private_key, store_parameters_class.pvwa_url,
+                                                               store_parameters_class.key_pair_safe_name,
+                                                               store_parameters_class.key_pair_platform,
+                                                               event_account_id, event_region)
+
+    if not key_pair_created:
+        logger.error(f"Failed to create Key Pair {store_parameters_class.key_pair_name} in safe "
+                     f"{store_parameters_class.key_pair_safe_name}.  See detailed error in logs")
+
+    logger.info(f"Successfully added Key Pair {store_parameters_class.key_pair_name} to safe "
+                f"{store_parameters_class.key_pair_safe_name}.")
+
+    pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
+    aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
+
+
+def get_parameters_and_pvwa_auth_info(solution_account_id):
+    store_parameters_class = aws_services.get_params_from_param_store()
+    if not store_parameters_class:
+        logger.error('Unable to retrieve parameters from the parameter store')
+        return False
+    if store_parameters_class.aob_mode == 'Production':
+        # Save PVWA Verification Key in /tmp folder
+        logger.info('Saving PVWA verification key')
+        crt = open("/tmp/pvwa_server.crt", "w+")
+        crt.write(store_parameters_class.pvwa_verification_key)
+        crt.close()
+        if store_parameters_class.vault_user_source == 'CyberArk Conjur':
+            # If using Conjur, save Conjur Verification Key in /tmp folder
+            logger.info('Saving Conjur verification key')
+            crt = open("/tmp/conjur_server.crt", "w+")
+            crt.write(store_parameters_class.conjur_verification_key)
+            crt.close()
+
+    # Check for vault user source and set variables for logon
+    if store_parameters_class.vault_user_source == 'CyberArk Conjur':
+        # Using Conjur
+        if store_parameters_class.conjur_authn_host_namespace == 'root':
+            conjur_username = f'host/{solution_account_id}/CyberArk-AOB-ElasticityLambdaRole'
+        else:
+            conjur_username = f'host/{store_parameters_class.conjur_authn_host_namespace}/' \
+                              f'{solution_account_id}/CyberArk-AOB-ElasticityLambdaRole'
+        try:
+            conjur_token = conjur_integration_class.logon_conjur(store_parameters_class.conjur_hostname,
+                                                                 store_parameters_class.conjur_account,
+                                                                 store_parameters_class.conjur_authn_service_id,
+                                                                 conjur_username)
+            vault_un = conjur_integration_class.get(conjur_token, store_parameters_class.conjur_vault_username_id)
+            if not vault_un:
+                logger.error("The Conjur variable for vault username is empty")
+                return False
+            store_parameters_class.vault_username = vault_un
+
+            vault_pw = conjur_integration_class.get(conjur_token, store_parameters_class.conjur_vault_password_id)
+            if not vault_pw:
+                logger.error("The Conjur Variable for vault user password is empty")
+                return False
+            store_parameters_class.vault_password = vault_pw
+        except Exception as e:
+            logger.error(f'Unable to retrieve Vault User details from Conjur:\n{str(e)}')
+            return False
+
+        return store_parameters_class
 
 class OnBoardStatus:
     on_boarded = "on boarded"

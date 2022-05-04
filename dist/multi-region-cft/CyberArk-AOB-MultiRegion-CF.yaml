@@ -33,6 +33,8 @@ Resources:
               - 'ec2:DescribeVpcAttribute'
               - 'ec2:DescribeImages'
               - 'ec2:GetPasswordData'
+              - 'ec2:CreateKeyPair'
+              - 'ec2:DescribeKeyPairs'
             Resource: '*'
           - Effect: Allow
             Action:
@@ -42,6 +44,12 @@ Resources:
               - 'dynamodb:DeleteItem'
               - 'dynamodb:Query'
             Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'lambda:UpdateFunctionConfiguration'
+            Resource:
+              - !Sub >-
+                  arn:aws:lambda:*:${AWS::AccountId}:function:CyberArk-AOB-KeyPairLifecycleLambda
           - Effect: Allow
             Action:
               - 'logs:CreateLogGroup'
@@ -121,6 +129,7 @@ Resources:
               - 'ec2:*Vpc*'
               - 'ec2:CreateKeyPair'
               - 'ec2:DescribeKeyPairs'
+              - 'ec2:DeleteKeyPair'
             Resource: '*'
           - Effect: Allow
             Action:
@@ -210,7 +219,7 @@ Resources:
       Role: !GetAtt
         - TrustMechanismLambdaRole
         - Arn
-      Runtime: python3.6
+      Runtime: python3.9
       Timeout: 10
       VpcConfig:
         SecurityGroupIds:
@@ -231,7 +240,7 @@ Resources:
         - ElasticityLambdaRole
         - Arn
       ReservedConcurrentExecutions: 100
-      Runtime: python3.6
+      Runtime: python3.9
       Timeout: 360
       VpcConfig:
         SecurityGroupIds:
@@ -251,7 +260,7 @@ Resources:
       Role: !GetAtt
         - SafeHandlerLambdaRole
         - Arn
-      Runtime: python3.6
+      Runtime: python3.9
       Timeout: 35
       VpcConfig:
         SecurityGroupIds:
@@ -368,9 +377,27 @@ Resources:
             - running
             - terminated
       Targets:
-        - Arn: !GetAtt
-            - ElasticityLambda
-            - Arn
+        - Arn: !GetAtt ElasticityLambda.Arn
+          Id: CyberArk-AOB-MultiRegion-CF-ElasticityLambda
+  EventBusRuleCustomKeyPair:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      EventBusName: !Ref ElasticityEventBus
+      Name: CyberArk-AOB-EC2_Key_Pair_Lifecycle
+      State: ENABLED
+      Description: 'Triggers CyberArk AOB Elasticity Lambda for EC2 Key Pair Lifecycle'
+      EventPattern:
+        source:
+          - cyberark.aob
+        detail-type:
+          - CyberArk AOB EC2 Key Pair Lifecycle Notification
+        detail:
+          method:
+            - keypair_lifecycle
+          action:
+            - create
+      Targets:
+        - Arn: !GetAtt ElasticityLambda.Arn
           Id: CyberArk-AOB-MultiRegion-CF-ElasticityLambda
   EventBusRuleDefault:
     Type: 'AWS::Events::Rule'
@@ -401,18 +428,21 @@ Resources:
       Action: 'lambda:InvokeFunction'
       FunctionName: !Ref ElasticityLambda
       Principal: events.amazonaws.com
-      SourceArn: !GetAtt
-        - EventBusRuleDefault
-        - Arn
+      SourceArn: !GetAtt EventBusRuleDefault.Arn
   EventBusLambdaPermissionCustom:
     Type: 'AWS::Lambda::Permission'
     Properties:
       Action: 'lambda:InvokeFunction'
       FunctionName: !Ref ElasticityLambda
       Principal: events.amazonaws.com
-      SourceArn: !GetAtt
-        - EventBusRuleCustom
-        - Arn
+      SourceArn: !GetAtt EventBusRuleCustom.Arn
+  EventBusLambdaPermissionCustomKeyPair:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref ElasticityLambda
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventBusRuleCustomKeyPair.Arn
 Description: ''
 Parameters:
   LambdasBucket:

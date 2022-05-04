@@ -14,7 +14,7 @@ class PvwaIntegration:
         self.is_safe_handler = is_safe_handler
         self.safe_handler_environment = safe_handler_environment
         try:
-            self.logger.info('Getting parameters from parameter store')
+            self.logger.info('pvwa_integration - Getting parameters from parameter store')
             if not is_safe_handler:
                 parameters = aws_services.get_params_from_param_store()
                 environment = parameters.aob_mode

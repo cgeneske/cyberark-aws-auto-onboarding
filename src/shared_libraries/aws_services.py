@@ -65,7 +65,7 @@ def get_ec2_details(instance_id, ec2_object, event_account_id):
         address = None
 
     if not image_description:
-        raise Exception("Determining OS type failed")
+        image_description = "None"
 
     details = dict()
     details['key_name'] = instance_resource.key_name
@@ -104,12 +104,14 @@ def get_instance_data_from_dynamo_table(instance_id):
 
 def get_params_from_param_store():
     # Parameters that will be retrieved from parameter store
-    logger.info('Getting parameters from parameter store')
+    logger.info('aws_services - Getting parameters from parameter store')
     UNIX_SAFE_NAME_PARAM = "AOB_Unix_Safe_Name"
     WINDOWS_SAFE_NAME_PARAM = "AOB_Windows_Safe_Name"
     VAULT_USER_PARAM = "AOB_Vault_User"
     PVWA_IP_PARAM = "AOB_PVWA_IP"
     AWS_KEYPAIR_SAFE = "AOB_KeyPair_Safe"
+    AWS_KEYPAIR_NAME = "AOB_KeyPair_Name"
+    AWS_KEYPAIR_PLATFORM = "AOB_KeyPair_Platform"
     VAULT_PASSWORD_PARAM_ = "AOB_Vault_Pass"
     PVWA_VERIFICATION_KEY = "AOB_PVWA_Verification_Key"
     AOB_MODE = "AOB_mode"
@@ -170,11 +172,38 @@ def get_params_from_param_store():
                 conjur_verification_key = ''
         else:
             continue
-    
+
+    # Max 10 parameters per request, looking up remaining parameters
+    lambda_request_data["Parameters"] = [AWS_KEYPAIR_NAME, AWS_KEYPAIR_PLATFORM]
+
+    try:
+        response = lambda_client.invoke(FunctionName='TrustMechanism',
+                                        InvocationType='RequestResponse',
+                                        Payload=json.dumps(lambda_request_data))
+    except Exception as e:
+        logger.error(f"Error retrieving parameters from parameter parameter store:\n{str(e)}")
+        raise Exception(f"Error retrieving parameters from parameter parameter store: {str(e)}")
+
+    json_parsed_response = json.load(response['Payload'])
+    # parsing the parameters, json_parsed_response is a list of dictionaries
+    for ssm_store_item in json_parsed_response:
+        if ssm_store_item['Name'] == AWS_KEYPAIR_NAME:
+            key_pair_name = ssm_store_item['Value']
+        elif ssm_store_item['Name'] == AWS_KEYPAIR_PLATFORM:
+            key_pair_platform = ssm_store_item['Value']
+        else:
+            continue
+
+    # Key Pair name and platform are optional and may not exist; setting defaults here if not defined in SSM
+    if 'key_pair_name' not in locals():
+        key_pair_name = ''
+    if 'key_pair_platform' not in locals():
+        key_pair_platform = 'UnixSSHKeys'
+
     if not should_retrieve_conjur_params:
         store_parameters_class = StoreParameters(unix_safe_name, windows_safe_name, vault_username, vault_password,
-                                                 pvwa_ip, key_pair_safe_name, pvwa_verification_key, aob_mode,
-                                                 debug_level, vault_user_source)
+                                                 pvwa_ip, key_pair_safe_name, key_pair_name, key_pair_platform,
+                                                 pvwa_verification_key, aob_mode, debug_level, vault_user_source)
         return store_parameters_class
 
     lambda_request_data_conjur = dict()
@@ -211,9 +240,11 @@ def get_params_from_param_store():
             continue
 
     store_parameters_class = StoreParameters(unix_safe_name, windows_safe_name, vault_username, vault_password, pvwa_ip,
-                                             key_pair_safe_name, pvwa_verification_key, aob_mode, debug_level, vault_user_source,
-                                             conjur_verification_key, conjur_hostname, conjur_account, conjur_authn_service_id,
-                                             conjur_authn_host_namespace, conjur_vault_username_id, conjur_vault_password_id)
+                                             key_pair_safe_name, key_pair_name, key_pair_platform,
+                                             pvwa_verification_key, aob_mode, debug_level, vault_user_source,
+                                             conjur_verification_key, conjur_hostname, conjur_account,
+                                             conjur_authn_service_id, conjur_authn_host_namespace,
+                                             conjur_vault_username_id, conjur_vault_password_id)
     return store_parameters_class
 
 
@@ -329,6 +360,27 @@ def update_instances_table_status(instance_id, status, error="None"):
     return True
 
 
+# Search if Key pair exist, if not - create it, return the pem key, False for error
+def create_new_key_pair(key_pair_name, ec2_client):
+    logger.trace(key_pair_name, caller_name='create_new_key_pair_on_aws')
+
+    # throws exception if key not found, if exception is InvalidKeyPair.Duplicate return True
+    try:
+        logger.info('Creating key pair')
+        key_pair_response = ec2_client.create_key_pair(
+            KeyName=key_pair_name,
+            DryRun=False
+        )
+    except Exception as e:
+        if e.response["Error"]["Code"] == "InvalidKeyPair.Duplicate":
+            logger.error(f"Key Pair {key_pair_name} already exists")
+            return True
+        logger.error(f'Creating new key pair failed. error code:\n {e.response["Error"]["Code"]}')
+        return False
+
+    return key_pair_response["KeyMaterial"]
+
+
 class StoreParameters:
     unix_safe_name = ""
     windows_safe_name = ""
@@ -336,6 +388,8 @@ class StoreParameters:
     vault_password = ""
     pvwa_url = "https://{0}/PasswordVault"
     key_pair_safe_name = ""
+    key_pair_name = ""
+    key_pair_platform = "UnixSSHKeys"
     pvwa_verification_key = ""
     aob_mode = ""
     vault_user_source = ""
@@ -348,15 +402,18 @@ class StoreParameters:
     conjur_vault_password_id = ""
 
 
-    def __init__(self, unix_safe_name, windows_safe_name, username, password, ip, key_pair_safe, pvwa_verification_key, mode,
-                 debug, vault_user_source, conjur_verification_key='', conjur_hostname='', conjur_account='', conjur_authn_service_id='',
-                 conjur_authn_host_namespace='', conjur_vault_username_id='', conjur_vault_password_id=''):
+    def __init__(self, unix_safe_name, windows_safe_name, username, password, ip, key_pair_safe, key_pair_name,
+                 key_pair_platform, pvwa_verification_key, mode, debug, vault_user_source, conjur_verification_key='',
+                 conjur_hostname='', conjur_account='', conjur_authn_service_id='', conjur_authn_host_namespace='',
+                 conjur_vault_username_id='', conjur_vault_password_id=''):
         self.unix_safe_name = unix_safe_name
         self.windows_safe_name = windows_safe_name
         self.vault_username = username
         self.vault_password = password
         self.pvwa_url = f"https://{ip}/PasswordVault"
         self.key_pair_safe_name = key_pair_safe
+        self.key_pair_name = key_pair_name
+        self.key_pair_platform = key_pair_platform
         self.pvwa_verification_key = pvwa_verification_key
         self.aob_mode = mode
         self.debug_level = debug

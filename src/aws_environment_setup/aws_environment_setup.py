@@ -5,6 +5,7 @@ import urllib3
 import boto3
 import botocore
 import cfnresponse
+import aws_services
 from log_mechanism import LogMechanism
 from pvwa_integration import PvwaIntegration
 from conjur_integration import ConjurIntegration
@@ -24,21 +25,41 @@ def lambda_handler(event, context):
         physical_resource_id = str(uuid.uuid4())
         if 'PhysicalResourceId' in event:
             physical_resource_id = event['PhysicalResourceId']
-        # Deleting parameters from parameter store that were created by this Lambda (during custom resource Create)
+
         if event['RequestType'] == 'Delete':
             logger.info('Delete request received')
-            params_to_del = ["AOB_Vault_Pass", "AOB_mode", "AOB_PVWA_Verification_Key", "AOB_Conjur_Verification_Key"]
+            # Deleting parameters from parameter store that were created by this Lambda
+            params_to_del = ["AOB_Vault_Pass", "AOB_mode", "AOB_PVWA_Verification_Key",
+                             "AOB_KeyPair_Name", "AOB_KeyPair_Platform", "AOB_Conjur_Verification_Key"]
+            logger.info('Begin delete of extra AOB parameters')
             delete_params = delete_params_from_param_store(params_to_del)
             if not delete_params:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
                                         {'Message': "Failed to delete one or more parameters from parameter store, "
                                             "see detailed error in logs"},
                                         physical_resource_id)
+            # Deleting DynamoDB Sessions Table
+            logger.info('Begin delete of DynamoDB Sessions Table')
             is_sessions_table_deleted = delete_sessions_table()
             if not is_sessions_table_deleted:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
                                         {'Message': "Failed to delete the Sessions table from DynamoDB"},
                                         physical_resource_id)
+
+            # Attempting cleanup of public key in AWS, retaining private key in the CyberArk Vault
+            request_key_pair_name = event['ResourceProperties']['KeyPairName']
+            if request_key_pair_name != '':
+                logger.info('Beginning EC2 key pair public key cleanup')
+                try:
+                    ec2_client = boto3.client('ec2')
+                    ec2_client.delete_key_pair(KeyName=request_key_pair_name)
+                    logger.info(f'Key Pair {request_key_pair_name} successfully deleted')
+                except Exception as e:
+                    if e.response['Error']['Code'] == 'InvalidKeyPair.NotFound':
+                        logger.info(f'Key Pair {request_key_pair_name} not found, nothing to remove')
+                    else:
+                        cfnresponse.send(event, context, cfnresponse.FAILED, {'Message': str(e)})
+
             return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, physical_resource_id)
 
         if event['RequestType'] == 'Create':
@@ -52,6 +73,7 @@ def lambda_handler(event, context):
             request_password = event['ResourceProperties']['Password']
             request_key_pair_safe = event['ResourceProperties']['KeyPairSafe']
             request_key_pair_name = event['ResourceProperties']['KeyPairName']
+            request_key_pair_platform = event['ResourceProperties']['KeyPairPlatform']
             request_aws_region_name = event['ResourceProperties']['AWSRegionName']
             request_aws_account_id = event['ResourceProperties']['AWSAccountId']
             request_s3_bucket_name = event['ResourceProperties']['S3BucketName']
@@ -187,7 +209,29 @@ def lambda_handler(event, context):
             if not request_key_pair_name:
                 logger.info("Key Pair name parameter is empty, the solution will not create a new Key Pair")
                 return cfnresponse.send(event, context, cfnresponse.SUCCESS, None, physical_resource_id)
-            aws_key_pair = create_new_key_pair_on_aws(request_key_pair_name)
+            logger.info('Adding AOB_KeyPair_Name to parameter store', DEBUG_LEVEL_DEBUG)
+            is_keypair_parm_saved = add_param_to_parameter_store(request_key_pair_name, 'AOB_KeyPair_Name',
+                                                                 'Name of the EC2 KeyPair that will be created by the'
+                                                                 'solution in all targeted accounts and regions')
+            if not is_keypair_parm_saved:  # if keypair failed to be saved
+                return cfnresponse.send(event, context, cfnresponse.FAILED,
+                                        {'Message': "Failed to create KeyPair Name in Parameter Store"},
+                                        physical_resource_id)
+
+            if not request_key_pair_platform:
+                logger.info("Key Pair platform parameter is empty, assuming default of UnixSSHKeys")
+            else:
+                logger.info('Adding AOB_KeyPair_Platform to parameter store', DEBUG_LEVEL_DEBUG)
+                is_keypair_plat_parm_saved = add_param_to_parameter_store(request_key_pair_platform, 'AOB_KeyPair_Platform',
+                                                                          'Name of the SSH Key Platform that will be used'
+                                                                          'by the solution for on-boarding EC2 key pairs')
+                if not is_keypair_plat_parm_saved:  # if keypair platform failed to be saved
+                    return cfnresponse.send(event, context, cfnresponse.FAILED,
+                                            {'Message': "Failed to create KeyPair Name in Parameter Store"},
+                                            physical_resource_id)
+
+            ec2_client = boto3.client('ec2')
+            aws_key_pair = aws_services.create_new_key_pair(request_key_pair_name, ec2_client)
 
             if aws_key_pair is False:
                 # Account already exist, no need to create it, can't insert it to the vault
@@ -199,9 +243,11 @@ def lambda_handler(event, context):
                                         {'Message': f"Key Pair {request_key_pair_name} already exists in AWS"},
                                         physical_resource_id)
             # Create the key pair account on KeyPairs vault
-            is_aws_account_created = create_key_pair_in_vault(pvwa_integration_class, pvwa_session_id, request_key_pair_name,
-                                                              aws_key_pair, request_pvwa_ip, request_key_pair_safe,
-                                                              request_aws_account_id, request_aws_region_name)
+            is_aws_account_created = create_key_pair_in_vault(pvwa_integration_class, pvwa_session_id,
+                                                              request_key_pair_name, aws_key_pair,
+                                                              pvwa_url, request_key_pair_safe,
+                                                              request_key_pair_platform, request_aws_account_id,
+                                                              request_aws_region_name)
             if not is_aws_account_created:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
                                         {'Message': f"Failed to create Key Pair {request_key_pair_name} in safe "
@@ -219,6 +265,45 @@ def lambda_handler(event, context):
             if pvwa_session_id:  # Logging off the session in case of successful logon
                 pvwa_integration_class.logoff_pvwa(pvwa_url, pvwa_session_id)
 
+
+def create_key_pair_in_vault(pvwa_integration_class, session, aws_key_name, private_key_value, pvwa_url, safe_name,
+                             platform_name, aws_account_id, aws_region_name):
+    logger.trace(session, aws_key_name, pvwa_url, safe_name, aws_account_id,
+                 aws_region_name, caller_name='create_key_pair_in_vault')
+    header = DEFAULT_HEADER
+    header.update({"Authorization": session})
+
+    trimmed_pem_key = str(private_key_value).replace("\n", "\\n")
+    trimmed_pem_key = trimmed_pem_key.replace("\r", "\\r")
+
+    # AWS.<AWS Account>.<Region name>.<key pair name>
+    unique_user_name = f"AWS.{aws_account_id}.{aws_region_name}.{aws_key_name}"
+    logger.info(f"Creating account with username:{unique_user_name}")
+
+    url = f"{pvwa_url}/WebServices/PIMServices.svc/Account"
+    data = f"""
+            {{
+              "account" : {{
+                  "safe":"{safe_name}",
+                  "platformID":"{platform_name}",
+                  "address":"AWS",
+                  "password":"{trimmed_pem_key}",
+                  "username":"{unique_user_name}",
+                  "disableAutoMgmt":"true",
+                  "disableAutoMgmtReason":"Unmanaged account"
+              }}
+            }}
+        """
+    rest_response = pvwa_integration_class.call_rest_api_post(url, data, header)
+
+    if rest_response.status_code == requests.codes.created:
+        logger.info(f"Key Pair created successfully in safe '{safe_name}'")
+        return True
+    elif rest_response.status_code == requests.codes.conflict:
+        logger.info(f"Key Pair created already exists in safe {safe_name}")
+        return True
+    logger.error(f"Failed to create Key Pair in safe {safe_name}, status code:{rest_response.status_code}")
+    return False
 
 # Creating a safe, if a failure occur, retry 3 time, wait 10 sec. between retries
 def create_safe(pvwa_integration_class, safe_name, cpm_name, pvwa_ip, session_id, number_of_days_retention=7):
@@ -258,68 +343,6 @@ def create_safe(pvwa_integration_class, safe_name, cpm_name, pvwa_ip, session_id
                 logger.error(f"Failed to create safe after several retries, status code:{create_safe_rest_response.status_code}")
                 return False
         time.sleep(10)
-
-
-# Search if Key pair exist, if not - create it, return the pem key, False for error
-def create_new_key_pair_on_aws(key_pair_name):
-    logger.trace(key_pair_name, caller_name='create_new_key_pair_on_aws')
-    ec2_client = boto3.client('ec2')
-
-    # throws exception if key not found, if exception is InvalidKeyPair.Duplicate return True
-    try:
-        logger.info('Creating key pair')
-        key_pair_response = ec2_client.create_key_pair(
-            KeyName=key_pair_name,
-            DryRun=False
-        )
-    except Exception as e:
-        if e.response["Error"]["Code"] == "InvalidKeyPair.Duplicate":
-            logger.error(f"Key Pair {key_pair_name} already exists")
-            return True
-        logger.error(f'Creating new key pair failed. error code:\n {e.response["Error"]["Code"]}')
-        return False
-
-    return key_pair_response["KeyMaterial"]
-
-
-def create_key_pair_in_vault(pvwa_integration_class, session, aws_key_name, private_key_value, pvwa_ip, safe_name,
-                             aws_account_id, aws_region_name):
-    logger.trace(pvwa_integration_class, session, aws_key_name, pvwa_ip, safe_name, aws_account_id,
-                 aws_region_name, caller_name='create_key_pair_in_vault')
-    header = DEFAULT_HEADER
-    header.update({"Authorization": session})
-
-    trimmed_pem_key = str(private_key_value).replace("\n", "\\n")
-    trimmed_pem_key = trimmed_pem_key.replace("\r", "\\r")
-
-    # AWS.<AWS Account>.<Region name>.<key pair name>
-    unique_user_name = f"AWS.{aws_account_id}.{aws_region_name}.{aws_key_name}"
-    logger.info(f"Creating account with username:{unique_user_name}")
-
-    url = f"https://{pvwa_ip}/PasswordVault/WebServices/PIMServices.svc/Account"
-    data = f"""
-            {{
-              "account" : {{
-                  "safe":"{safe_name}",
-                  "platformID":"UnixSSHKeys",
-                  "address":1.1.1.1,
-                  "password":"{trimmed_pem_key}",
-                  "username":"{unique_user_name}",
-                  "disableAutoMgmt":"true",
-                  "disableAutoMgmtReason":"Unmanaged account"
-              }}
-            }}
-        """
-    rest_response = pvwa_integration_class.call_rest_api_post(url, data, header)
-
-    if rest_response.status_code == requests.codes.created:
-        logger.info(f"Key Pair created successfully in safe '{safe_name}'")
-        return True
-    elif rest_response.status_code == requests.codes.conflict:
-        logger.info(f"Key Pair created already exists in safe {safe_name}")
-        return True
-    logger.error(f"Failed to create Key Pair in safe {safe_name}, status code:{rest_response.status_code}")
-    return False
 
 
 def create_session_table():
