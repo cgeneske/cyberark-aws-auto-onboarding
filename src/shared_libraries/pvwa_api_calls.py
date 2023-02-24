@@ -13,19 +13,23 @@ def create_account_on_vault(session, account_name, account_password, store_param
     logger.trace(session, account_name, store_parameters_class, platform_id, address,
                  instance_id, username, safe_name, caller_name='create_account_on_vault')
     logger.info(f'Creating account in vault for {instance_id}')
+    secret_type = "key"
+    if "Windows" in account_name:
+        secret_type = "password"
     header = DEFAULT_HEADER
     header.update({"Authorization": session})
-    url = f"{store_parameters_class.pvwa_url}/WebServices/PIMServices.svc/Account"
+    url = f"{store_parameters_class.pvwa_url}/api/Accounts"
     data = f"""
     {{
-        "account" : {{
-            "safe":"{safe_name}",
-            "platformID":"{platform_id}",
-            "address":"{address}",
-            "accountName":"{account_name}",
-            "password":"{account_password}",
-            "username":"{username}",
-            "disableAutoMgmt":"false"
+        "name":"{account_name}",
+        "username":"{username}",
+        "address":"{address}",
+        "safeName":"{safe_name}",
+        "platformId":"{platform_id}",
+        "secretType": "{secret_type}",
+        "secret":"{account_password}",
+        "secretManagement": {{
+            "automaticManagementEnabled": "true"
         }}
     }}
     """
@@ -51,20 +55,21 @@ def create_key_pair_in_vault(session, aws_key_name, private_key_value, pvwa_url,
     unique_user_name = f"AWS.{aws_account_id}.{aws_region_name}.{aws_key_name}"
     logger.info(f"Creating account with username:{unique_user_name}")
 
-    url = f"{pvwa_url}/WebServices/PIMServices.svc/Account"
+    url = f"{pvwa_url}/api/Accounts"
     data = f"""
-            {{
-              "account" : {{
-                  "safe":"{safe_name}",
-                  "platformID":"{platform_name}",
-                  "address":"AWS",
-                  "password":"{trimmed_pem_key}",
-                  "username":"{unique_user_name}",
-                  "disableAutoMgmt":"true",
-                  "disableAutoMgmtReason":"Unmanaged account"
-              }}
-            }}
-        """
+    {{
+        "safe":"{safe_name}",
+        "platformID":"{platform_name}",
+        "address":"AWS",
+        "secretType": "key",
+        "secret":"{trimmed_pem_key}",
+        "username":"{unique_user_name}",
+        "secretManagement": {{
+            "automaticManagementEnabled": "false",
+            "manualManagementReason": "Unmanaged account"
+        }}
+    }}
+    """
     rest_response = pvwa_integration_class.call_rest_api_post(url, data, header)
 
     if rest_response.status_code == requests.codes.created:
@@ -82,7 +87,7 @@ def rotate_credentials_immediately(session, pvwa_url, account_id, instance_id):
     logger.info(f'Rotating {instance_id} credentials')
     header = DEFAULT_HEADER
     header.update({"Authorization": session})
-    url = f"{pvwa_url}/API/Accounts/{account_id}/Change"
+    url = f"{pvwa_url}/api/Accounts/{account_id}/Change"
     data = ""
     rest_response = pvwa_integration_class.call_rest_api_post(url, data, header)
     if rest_response.status_code == requests.codes.ok:
@@ -114,6 +119,7 @@ def delete_account_from_vault(session, account_id, instance_id, pvwa_url):
     logger.info(f'Deleting {instance_id} from vault')
     header = DEFAULT_HEADER
     header.update({"Authorization": session})
+    # Continuing use of the Gen 1 API here as Gen 2 API does not yet support deletion of SSH Keys
     rest_url = f"{pvwa_url}/WebServices/PIMServices.svc/Accounts/{account_id}"
     rest_response = pvwa_integration_class.call_rest_api_delete(rest_url, header)
 
@@ -198,19 +204,19 @@ def check_if_safe_exists(session, safe_name, pvwa_url):
     logger.info(f"Checking if {safe_name} exists in the vault")
     header = DEFAULT_HEADER
     header.update({"Authorization": session})
-    url = f"{pvwa_url}/WebServices/PIMServices.svc/Safes?query={safe_name}"
+    url = f"{pvwa_url}/api/Safes?search={safe_name}"
     try:
         rest_response = pvwa_integration_class.call_rest_api_get(url, header)
         if not rest_response:
             raise Exception("Unknown Error when calling rest service - check_if_safe_exists")
     except Exception as e:
-        logger.error(f'An error occured:\n{str(e)}')
+        logger.error(f'An error occurred:\n{str(e)}')
         raise Exception(e)
     if rest_response.status_code == requests.codes.ok:
-        if 'SearchSafesResult' in rest_response.json() and rest_response.json()["SearchSafesResult"]:
-            parsed_json_response = rest_response.json()['SearchSafesResult']
+        if 'value' in rest_response.json() and rest_response.json()["value"]:
+            parsed_json_response = rest_response.json()['value']
             for element in parsed_json_response:
-                if safe_name in element['SafeName']:
+                if safe_name in element['safeName']:
                     logger.info(f"Found matching safe - {safe_name}")
                     return True
         logger.info(f"No matching safe was found for - {safe_name}")

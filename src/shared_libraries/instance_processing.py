@@ -111,13 +111,9 @@ def create_instance(instance_id, instance_details, store_parameters_class, log_n
         instance_username = get_os_distribution_user(instance_details['image_description'])
 
     # Check if account already exist - in case exist - just add it to DynamoDB
-    print('pvwa_connection_number')
-    pvwa_connection_number, session_guid = aws_services.get_session_from_dynamo()
-    if not pvwa_connection_number:
-        return False
     session_token = pvwa_integration_class.logon_pvwa(store_parameters_class.vault_username,
                                                       store_parameters_class.vault_password,
-                                                      store_parameters_class.pvwa_url, pvwa_connection_number)
+                                                      store_parameters_class.pvwa_url)
     print('session_token')
     if not session_token:
         return False
@@ -152,7 +148,6 @@ def create_instance(instance_id, instance_details, store_parameters_class, log_n
             aws_services.put_instance_to_dynamo_table(instance_id, instance_details['address'], OnBoardStatus.on_boarded_failed,
                                                       error_message, log_name)
     pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
-    aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
     return True
 
 
@@ -179,14 +174,9 @@ def determine_best_viable_safe(instance_id, instance_details, event_account_id, 
                 caller_name='determine_best_viable_safe')
     logger.info(f"Determining on-boarding safe for {instance_id}")
 
-    print('pvwa_connection_number')
-    pvwa_connection_number, session_guid = aws_services.get_session_from_dynamo()
-    if not pvwa_connection_number:
-        logger.info("Unable to reserve PVWA connection number from DynamoDB sessions table, returning default safe name")
-        return default_safe_name
     session_token = pvwa_integration_class.logon_pvwa(store_parameters_class.vault_username,
                                                       store_parameters_class.vault_password,
-                                                      store_parameters_class.pvwa_url, pvwa_connection_number)
+                                                      store_parameters_class.pvwa_url)
     print('session_token')
     if not session_token:
         logger.info(f"Failed to authenticate to PVWA, using safe name - {default_safe_name} - for on-boarding")
@@ -207,7 +197,6 @@ def determine_best_viable_safe(instance_id, instance_details, event_account_id, 
         logger.error(f'An error occured:\n{str(e)}')
     finally:
         pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
-        aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
 
 
 class OnBoardStatus:

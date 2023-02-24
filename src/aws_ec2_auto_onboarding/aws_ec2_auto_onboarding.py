@@ -116,13 +116,9 @@ def elasticity_function(instance_id, action_type, event_account_id, event_region
         if store_parameters_class is False:
             return
 
-        pvwa_connection_number, session_guid = aws_services.get_session_from_dynamo()
-        if not pvwa_connection_number:
-            return
         session_token = pvwa_integration_class.logon_pvwa(store_parameters_class.vault_username,
                                                           store_parameters_class.vault_password,
-                                                          store_parameters_class.pvwa_url,
-                                                          pvwa_connection_number)
+                                                          store_parameters_class.pvwa_url)
         if not session_token:
             return
         disconnect = False
@@ -149,7 +145,6 @@ def elasticity_function(instance_id, action_type, event_account_id, event_region
             if instance_account_password is False:
                 return
             pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
-            aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
             disconnect = True
             instance_processing.create_instance(instance_id, instance_details, store_parameters_class, log_name,
                                                 solution_account_id, event_region, event_account_id, instance_account_password)
@@ -159,7 +154,6 @@ def elasticity_function(instance_id, action_type, event_account_id, event_region
 
         if not disconnect:
             pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
-            aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
 
     except Exception as e:
         logger.error(f"Unknown error occurred: {e}")
@@ -171,7 +165,6 @@ def elasticity_function(instance_id, action_type, event_account_id, event_region
             aws_services.put_instance_to_dynamo_table(instance_id, instance_details["address"], OnBoardStatus.on_boarded_failed,
                                                       str(e), log_name)
 # TODO: Retry mechanism?
-        aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
         return
 
 
@@ -245,18 +238,11 @@ def keypair_create_function(event_account_id, event_region, solution_account_id)
     except Exception as e:
         logger.error(f'Error updating EC2 key pair lifecycle lambda for account {event_account_id} : {str(e)}')
 
-    # Reserving PVWA connection number in dynamoDB
-    pvwa_connection_number, session_guid = aws_services.get_session_from_dynamo()
-    if not pvwa_connection_number:
-        return
-
     # Authenticating to PVWA
     session_token = pvwa_integration_class.logon_pvwa(store_parameters_class.vault_username,
                                                       store_parameters_class.vault_password,
-                                                      store_parameters_class.pvwa_url,
-                                                      pvwa_connection_number)
+                                                      store_parameters_class.pvwa_url)
     if not session_token:
-        aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
         return
 
     # Adding EC2 Key Pair to the Vault
@@ -274,7 +260,6 @@ def keypair_create_function(event_account_id, event_region, solution_account_id)
                 f"{store_parameters_class.key_pair_safe_name}.")
 
     pvwa_integration_class.logoff_pvwa(store_parameters_class.pvwa_url, session_token)
-    aws_services.release_session_on_dynamo(pvwa_connection_number, session_guid)
 
 
 def get_parameters_and_pvwa_auth_info(solution_account_id):

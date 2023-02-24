@@ -74,19 +74,18 @@ class PvwaIntegration:
 
     # PvwaIntegration:
     # performs logon to PVWA and return the session token
-    def logon_pvwa(self, username, password, pvwa_url, connection_session_id):
-        self.logger.trace(pvwa_url, connection_session_id, caller_name='logon_pvwa')
+    def logon_pvwa(self, username, password, pvwa_url):
+        self.logger.trace(pvwa_url, caller_name='logon_pvwa')
         self.username = username
         self.password = password
         self.pvwa_url = pvwa_url
-        self.connection_session_id = connection_session_id
         self.logger.info('Logging to PVWA')
-        logon_url = f'{self.pvwa_url}/WebServices/auth/Cyberark/CyberArkAuthenticationService.svc/Logon'
+        logon_url = f'{self.pvwa_url}/api/auth/Cyberark/Logon'
         rest_log_on_data = f"""
                             {{
                                 "username": "{self.username}",
                                 "password": "{self.password}",
-                                "connectionNumber": "{self.connection_session_id}"
+                                "concurrentSession": "true"
                             }}
                             """
         try:
@@ -98,9 +97,8 @@ class PvwaIntegration:
             self.logger.error("Connection to PVWA reached timeout")
             raise Exception("Connection to PVWA reached timeout")
         if rest_response.status_code == requests.codes.ok:
-            json_parsed_response = rest_response.json()
             self.logger.info("User authenticated")
-            return json_parsed_response['CyberArkLogonResult']
+            return rest_response.text.strip('\"')
         self.logger.error(f"Authentication failed with response:\n{rest_response}")
         raise Exception("PVWA authentication failed")
 
@@ -112,7 +110,7 @@ class PvwaIntegration:
         self.logger.info('Logging off from PVWA')
         header = DEFAULT_HEADER
         header.update({"Authorization": self.connection_session_token})
-        log_off_url = f'{self.pvwa_url}/WebServices/auth/Cyberark/CyberArkAuthenticationService.svc/Logoff'
+        log_off_url = f'{self.pvwa_url}/api/Auth/Logoff'
         rest_log_off_data = ""
         try:
             rest_response = self.call_rest_api_post(log_off_url, rest_log_off_data, header)

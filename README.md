@@ -29,7 +29,7 @@ This solution supports CyberArk environments that are deployed in the Cloud and 
 # Prerequisites
 This solution requires the following:
 
-1. The CyberArk PAS solution is installed on-prem / Cloud / hybrid with v9.10 or higher.
+1. The CyberArk PAS solution is installed on-prem / Cloud / hybrid with v11.3 or higher.
 2. The CyberArk license must include SSH key manager.
 3. Network access from the Lambda VPC to CyberArk's PVWA.
 4. Network access from the Lambda VPC to various AWS service endpoints as detailed below.  This is most simply accomplished through the 

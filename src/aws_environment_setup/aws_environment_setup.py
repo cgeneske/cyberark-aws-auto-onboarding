@@ -168,7 +168,7 @@ def lambda_handler(event, context):
 
             pvwa_integration_class = PvwaIntegration(IS_SAFE_HANDLER, aob_mode)
             pvwa_url = f"https://{request_pvwa_ip}/PasswordVault"
-            pvwa_session_id = pvwa_integration_class.logon_pvwa(vault_username, vault_password, pvwa_url, "1")
+            pvwa_session_id = pvwa_integration_class.logon_pvwa(vault_username, vault_password, pvwa_url)
             if not pvwa_session_id:
                 return cfnresponse.send(event, context, cfnresponse.FAILED,
                                         {'Message': "Failed to connect to PVWA, see detailed error in logs"},
