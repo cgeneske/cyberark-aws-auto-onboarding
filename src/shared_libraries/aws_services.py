@@ -54,6 +54,12 @@ def get_ec2_details(instance_id, ec2_object, event_account_id):
         instance_image = ec2_object.Image(instance_resource.image_id)
         logger.info(f'Image Detected: {str(instance_image)}')
         image_description = instance_image.description
+        # If we don't see an image description, use the image name instead
+        if not image_description:
+            image_description = instance_image.name
+        # If we don't see an image name either, set image_description to "None" which will match to ec2_user
+        if not image_description:
+            image_description = "None"
     except Exception as e:
         logger.error(f'Error on getting instance details: {str(e)}')
         raise e
@@ -63,9 +69,6 @@ def get_ec2_details(instance_id, ec2_object, event_account_id):
         address = instance_resource.private_ip_address
     else:  # unable to retrieve address from aws
         address = None
-
-    if not image_description:
-        image_description = "None"
 
     details = dict()
     details['key_name'] = instance_resource.key_name
