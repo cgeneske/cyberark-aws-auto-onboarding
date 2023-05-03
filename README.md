@@ -102,6 +102,11 @@ must be the owner of these Safes with the following permissions:
         Update Accounts Properties
         Initiate CPM account management operations
 
+14. The Vault user's password **must not** contain a backslash `[\]` or double-quotation `["]` character.  Presence of
+these characters in the password will result in PVWA authentication errors identifiable in CloudWatch logs as:
+`[ERROR] Connection to PVWA reached timeout`.  When Vaulting and managing this password (common to Conjur integration), it is 
+recommended to forbid these characters via its assigned platform under `Automatic Password Management > Generate 
+Password > PasswordForbiddenCharacters`.
 
 # Deployment using Cloud Formation 
 
