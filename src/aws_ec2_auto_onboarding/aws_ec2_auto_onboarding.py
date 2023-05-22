@@ -308,7 +308,7 @@ def get_parameters_and_pvwa_auth_info(solution_account_id):
             logger.error(f'Unable to retrieve Vault User details from Conjur:\n{str(e)}')
             return False
 
-        return store_parameters_class
+    return store_parameters_class
 
 class OnBoardStatus:
     on_boarded = "on boarded"
