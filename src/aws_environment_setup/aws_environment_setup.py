@@ -3,19 +3,20 @@ import time
 import requests
 import urllib3
 import boto3
-import botocore
 import cfnresponse
 import aws_services
 from log_mechanism import LogMechanism
 from pvwa_integration import PvwaIntegration
 from conjur_integration import ConjurIntegration
 from dynamo_lock import LockerClient
+from botocore.config import Config
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 DEBUG_LEVEL_DEBUG = 'debug' # Outputs all information
 DEFAULT_HEADER = {"content-type": "application/json"}
 IS_SAFE_HANDLER = True
+BOTO_CLIENT_CONFIG = Config(connect_timeout=5, retries={'total_max_attempts': 2, 'mode': 'standard'})
 logger = LogMechanism()
 
 
@@ -51,7 +52,7 @@ def lambda_handler(event, context):
             if request_key_pair_name != '':
                 logger.info('Beginning EC2 key pair public key cleanup')
                 try:
-                    ec2_client = boto3.client('ec2')
+                    ec2_client = boto3.client('ec2', config=BOTO_CLIENT_CONFIG)
                     ec2_client.delete_key_pair(KeyName=request_key_pair_name)
                     logger.info(f'Key Pair {request_key_pair_name} successfully deleted')
                 except Exception as e:
@@ -139,7 +140,6 @@ def lambda_handler(event, context):
                     return cfnresponse.send(event, context, cfnresponse.FAILED,
                                             {'Message': "One or more Conjur parameters have not been defined"},
                                             physical_resource_id)
-
 
             if request_s3_bucket_name == '' and request_pvwa_verification_key_name != '':
                 raise Exception('S3 Bucket cannot be empty if Verification Key is provided')
@@ -230,7 +230,7 @@ def lambda_handler(event, context):
                                             {'Message': "Failed to create KeyPair Name in Parameter Store"},
                                             physical_resource_id)
 
-            ec2_client = boto3.client('ec2')
+            ec2_client = boto3.client('ec2', config=BOTO_CLIENT_CONFIG)
             aws_key_pair = aws_services.create_new_key_pair(request_key_pair_name, ec2_client)
 
             if aws_key_pair is False:
@@ -280,20 +280,21 @@ def create_key_pair_in_vault(pvwa_integration_class, session, aws_key_name, priv
     unique_user_name = f"AWS.{aws_account_id}.{aws_region_name}.{aws_key_name}"
     logger.info(f"Creating account with username:{unique_user_name}")
 
-    url = f"{pvwa_url}/WebServices/PIMServices.svc/Account"
+    url = f"{pvwa_url}/api/Accounts"
     data = f"""
-            {{
-              "account" : {{
-                  "safe":"{safe_name}",
-                  "platformID":"{platform_name}",
-                  "address":"AWS",
-                  "password":"{trimmed_pem_key}",
-                  "username":"{unique_user_name}",
-                  "disableAutoMgmt":"true",
-                  "disableAutoMgmtReason":"Unmanaged account"
-              }}
-            }}
-        """
+    {{
+        "safeName": "{safe_name}",
+        "platformID": "{platform_name}",
+        "address": "AWS",
+        "secretType": "key",
+        "secret": "{trimmed_pem_key}",
+        "username": "{unique_user_name}",
+        "secretManagement": {{
+              "automaticManagementEnabled": "false",
+              "manualManagementReason": "Unmanaged account"
+        }}
+    }}
+    """
     rest_response = pvwa_integration_class.call_rest_api_post(url, data, header)
 
     if rest_response.status_code == requests.codes.created:
@@ -311,19 +312,17 @@ def create_safe(pvwa_integration_class, safe_name, cpm_name, pvwa_ip, session_id
                  caller_name='create_safe')
     header = DEFAULT_HEADER
     header.update({"Authorization": session_id})
-    create_safe_url = f"https://{pvwa_ip}/PasswordVault/WebServices/PIMServices.svc/Safes"
+    create_safe_url = f"https://{pvwa_ip}/PasswordVault/api/Safes"
     # Create new safe, default number of days retention is 7, unless specified otherwise
     data = f"""
-            {{
-            "safe":{{
-                "SafeName":"{safe_name}",
-                "Description":"",
-                "OLACEnabled":false,
-                "ManagingCPM":"{cpm_name}",
-                "NumberOfDaysRetention":"{number_of_days_retention}"
-              }}
-            }}
-            """
+    {{
+        "SafeName":"{safe_name}",
+        "Description":"",
+        "OLACEnabled":false,
+        "ManagingCPM":"{cpm_name}",
+        "NumberOfDaysRetention":"{number_of_days_retention}"
+    }}
+    """
 
     for i in range(0, 3):
         create_safe_rest_response = pvwa_integration_class.call_rest_api_post(create_safe_url, data, header)
@@ -363,7 +362,7 @@ def save_verification_key_to_param_store(s3_bucket_name, verification_key_name, 
     logger.trace(s3_bucket_name, verification_key_name, caller_name='save_verification_key_to_param_store')
     try:
         logger.info(f'Downloading {verification_key_name} from S3 bucket - {s3_bucket_name}')
-        s3_resource = boto3.resource('s3')
+        s3_resource = boto3.resource('s3', config=BOTO_CLIENT_CONFIG)
         s3_resource.Bucket(s3_bucket_name).download_file(verification_key_name, f'/tmp/{verification_key_type}_server.crt')
         add_param_to_parameter_store(open(f'/tmp/{verification_key_type}_server.crt').read(), parameter_name, parameter_description)
     except Exception as e:
@@ -376,7 +375,7 @@ def add_param_to_parameter_store(value, parameter_name, parameter_description):
     logger.trace(parameter_name, parameter_description, caller_name='add_param_to_parameter_store')
     try:
         logger.info(f'Adding parameter {parameter_name} to parameter store')
-        ssm_client = boto3.client('ssm')
+        ssm_client = boto3.client('ssm', config=BOTO_CLIENT_CONFIG)
         ssm_client.put_parameter(
             Name=parameter_name,
             Description=parameter_description,
@@ -393,7 +392,7 @@ def delete_params_from_param_store(params_to_del):
     logger.trace(params_to_del, caller_name='delete_params_from_param_store')
     logger.info('Deleting parameters from parameter store')
     state = True
-    ssm_client = boto3.client('ssm')
+    ssm_client = boto3.client('ssm', config=BOTO_CLIENT_CONFIG)
     for param in params_to_del:
         try:
             ssm_client.delete_parameter(Name=f'{param}')
@@ -411,7 +410,7 @@ def delete_sessions_table():
     logger.trace(caller_name='delete_sessions_table')
     try:
         logger.info('Deleting Dynamo session table')
-        dynamodb = boto3.resource('dynamodb')
+        dynamodb = boto3.resource('dynamodb', config=BOTO_CLIENT_CONFIG)
         sessions_table = dynamodb.Table('Sessions')
         sessions_table.delete()
         return True

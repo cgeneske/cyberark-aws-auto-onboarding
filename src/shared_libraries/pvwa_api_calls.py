@@ -58,7 +58,7 @@ def create_key_pair_in_vault(session, aws_key_name, private_key_value, pvwa_url,
     url = f"{pvwa_url}/api/Accounts"
     data = f"""
     {{
-        "safe":"{safe_name}",
+        "safeName":"{safe_name}",
         "platformID":"{platform_name}",
         "address":"AWS",
         "secretType": "key",
